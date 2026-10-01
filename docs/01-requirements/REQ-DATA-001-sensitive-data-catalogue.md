@@ -210,11 +210,19 @@ anywhere on the page is not evidence.
 | P-3 | Identical original values within one observation receive identical placeholders, even across modalities (`FR-VLT-2`). |
 | P-4 | Distinct original values never share a placeholder (`FR-VLT-3`). |
 | P-5 | Only uppercase alphanumerics and underscore are permitted inside the token — no spaces, no punctuation. |
-| P-6 | **Collision guard.** If the source page already contains text matching a placeholder pattern, the placeholder namespace shall be offset until no collision exists, because a page must not be able to forge a token that later detokenizes to attacker-chosen content. |
+| P-6 | **Collision guard (unforgeable tokens).** Every placeholder carries a per-observation nonce generated on-device, so a page that embeds the literal text `<AADHAAR_1>` cannot mint a token that later detokenizes to attacker-chosen content. |
 
 > **P-6 is a security control, not a formatting rule.** Without it, a hostile page could embed the
 > literal string `<EMAIL_1>` in its own content, and any downstream detokenization would treat
 > page-authored text as vault-authoritative.
+>
+> **Refinement recorded during implementation.** An earlier revision of P-6 required *offsetting
+> the numbering* until no collision existed. That is weaker than it appears: a hostile page can
+> simply include every plausible offset in its own text, since the page is larger than the set of
+> offsets worth trying. The implemented rule uses a **per-observation nonce** generated on-device
+> with `secrets.token_hex(4)` and embedded in the token — `<AADHAAR_1#7f3a2b1c>`. The page cannot
+> predict it, so no amount of embedded token text can be resolved. Token format: `<TYPE_n#NONCE>`,
+> with `TYPE` uppercase alphanumeric and underscore, and `NONCE` eight lowercase hex characters.
 
 ---
 
