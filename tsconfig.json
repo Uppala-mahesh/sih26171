@@ -1,0 +1,21 @@
+{
+  "//": "Deliberately strict. The contract types exist to make DP-5, DP-6 and DP-7 build failures, so the compiler must be allowed to actually fail.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["packages/**/*.ts", "apps/extension/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "**/vendor/**"]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "sih-agent-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SIH26171 - Privacy-preserving browser agent with on-device visual perception",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

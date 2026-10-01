@@ -1,0 +1,215 @@
+# SIH26171 — Sensitive Entity Taxonomy
+#
+# THE SINGLE SOURCE OF TRUTH.
+# Generates packages/taxonomy/generated/entities.ts and entities.py.
+#
+# Governed by: REQ-DATA-001   |   Consumed by: every detector, in both runtimes
+# Rules: D-1..D-4 of REQ-DATA-001 section 1.2. No detector may declare its own entity list.
+#
+# CONSTRAINT DA-5 (SEC-THREAT-001): every pattern below MUST be linear-time.
+# Nested quantifiers are a build failure, not a style issue - an adversarial
+# page can submit text that triggers catastrophic backtracking. Enforced by the
+# pattern lint in infra/ (RT-10).
+
+version: 1.0.0
+
+sensitivity_classes: [CRITICAL, HIGH, MEDIUM, LOW]
+verification_tiers:
+  T1: "Verified - arithmetic checksum or cryptographic shape"
+  T2: "Structured - strict format expression"
+  T3: "Contextual - shape AND a local context cue"
+  T4: "Semantic - NER or classifier above a confidence threshold"
+
+entities:
+  - id: AADHAAR
+    display: "Aadhaar Number"
+    class: CRITICAL
+    tier: T1
+    validator: verhoeff
+    requires_context: false
+    placeholder: AADHAAR
+    pattern: '\b\d{4}[ -]?\d{4}[ -]?\d{4}\b'
+    note: "Verhoeff check digit is mandatory. Luhn is NOT the Aadhaar checksum."
+
+  - id: PAN
+    display: "Permanent Account Number"
+    class: HIGH
+    tier: T2
+    validator: pan_structure
+    requires_context: false
+    placeholder: PAN
+    pattern: '\b[A-Z]{5}[0-9]{4}[A-Z]\b'
+    note: "4th character must be a holder-type code."
+
+  - id: UPI_VPA
+    display: "UPI Virtual Payment Address"
+    class: HIGH
+    tier: T2
+    validator: psp_allowlist
+    requires_context: false
+    placeholder: UPI
+    pattern: '\b[\w.\-]+@(?:okhdfcbank|okicici|oksbi|okaxis|ybl|apl|ibl|axl|paytm|postbank|barodampay|upi)\b'
+
+  - id: IFSC
+    display: "IFSC Bank Branch Code"
+    class: MEDIUM
+    tier: T2
+    validator: ifsc_structure
+    requires_context: false
+    placeholder: IFSC
+    pattern: '\b[A-Z]{4}0[A-Z0-9]{6}\b'
+
+  - id: MOBILE_IN
+    display: "Indian Mobile Number"
+    class: HIGH
+    tier: T2
+    validator: mobile_in_structure
+    requires_context: false
+    placeholder: PHONE
+    pattern: '(?:\+91[ -]?|0)?[6-9]\d{4}[ -]?\d{5}\b'
+
+  - id: PHONE_INTL
+    display: "International Phone Number"
+    class: MEDIUM
+    tier: T2
+    validator: e164_structure
+    requires_context: false
+    placeholder: PHONE
+    pattern: '\+\d{1,3}[ -]?\d{2,4}[ -]?\d{3,4}[ -]?\d{0,4}\b'
+
+  - id: BANK_ACCOUNT
+    display: "Bank Account Number"
+    class: HIGH
+    tier: T3
+    validator: none
+    requires_context: true
+    context_cues: [account, acct, a/c, bank, balance]
+    placeholder: ACCOUNT
+    pattern: '\b\d{9,18}\b'
+
+  - id: CREDIT_CARD
+    display: "Payment Card Number"
+    class: CRITICAL
+    tier: T1
+    validator: luhn
+    requires_context: false
+    placeholder: CARD
+    pattern: '\b(?:\d[ -]?){13,19}\b'
+    note: "Shape alone matches order IDs and epoch timestamps. Luhn is mandatory."
+
+  - id: EMAIL
+    display: "Email Address"
+    class: HIGH
+    tier: T2
+    validator: none
+    requires_context: false
+    placeholder: EMAIL
+    pattern: '\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b'
+
+  - id: PASSWORD
+    display: "Credential"
+    class: CRITICAL
+    tier: T3
+    validator: none
+    requires_context: true
+    context_cues: [password, passwd, pwd, pass]
+    placeholder: PASSWORD
+    pattern: null
+    note: "Additionally redacted unconditionally for any input[type=password] (FR-PII-6)."
+
+  - id: OTP
+    display: "One-Time Passcode"
+    class: CRITICAL
+    tier: T3
+    validator: none
+    requires_context: true
+    context_cues: [otp, code, verification, pin, token, 2fa]
+    placeholder: OTP
+    pattern: '\b\d{4,8}\b'
+
+  - id: API_KEY
+    display: "Machine Credential"
+    class: CRITICAL
+    tier: T2
+    validator: entropy
+    requires_context: false
+    placeholder: SECRET
+    pattern: '\b(?:AIza[0-9A-Za-z_\-]{35}|gh[opusr]_[A-Za-z0-9_]{36,}|sk-[A-Za-z0-9]{32,})\b'
+
+  - id: JWT
+    display: "Bearer Token"
+    class: CRITICAL
+    tier: T2
+    validator: jwt_structure
+    requires_context: false
+    placeholder: SECRET
+    pattern: '\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b'
+
+  - id: SECRET_GENERIC
+    display: "Unclassified Secret"
+    class: CRITICAL
+    tier: T3
+    validator: entropy
+    requires_context: true
+    context_cues: [secret, token, key, password, api_key, apikey, credential]
+    placeholder: SECRET
+    pattern: '\b[A-Za-z0-9+/]{24,}={0,2}\b'
+
+  - id: PERSON_NAME
+    display: "Person Name"
+    class: MEDIUM
+    tier: T4
+    validator: ner
+    requires_context: true
+    context_cues: [name, holder, account holder, beneficiary, applicant, owner]
+    placeholder: PERSON
+    pattern: null
+
+  - id: ADDRESS
+    display: "Postal Address"
+    class: MEDIUM
+    tier: T4
+    validator: ner
+    requires_context: true
+    context_cues: [address, addr, residence, street, city, pin]
+    placeholder: ADDRESS
+    pattern: null
+
+  - id: DOB
+    display: "Date of Birth"
+    class: MEDIUM
+    tier: T3
+    validator: none
+    requires_context: true
+    context_cues: [dob, date of birth, birth, born]
+    placeholder: DOB
+    pattern: '\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b'
+
+  - id: POSTAL_CODE_IN
+    display: "Indian PIN Code"
+    class: LOW
+    tier: T2
+    validator: none
+    requires_context: false
+    placeholder: PIN
+    pattern: '\b[1-9]\d{5}\b'
+
+  - id: STUDENT_ID
+    display: "Roll or Hall Ticket Number"
+    class: LOW
+    tier: T3
+    validator: none
+    requires_context: true
+    context_cues: [roll, roll no, hall ticket, admission, enrollment, reg no]
+    placeholder: ID
+    pattern: '\b\d{4}[-\s]?\d{2}[-\s]?\d{3}[-\s]?\d{3}\b'
+
+  - id: FACE_IMAGE
+    display: "Face in Image"
+    class: HIGH
+    tier: T4
+    validator: model
+    requires_context: false
+    placeholder: FACE
+    pattern: null
+    note: "In scope per approved CR-001. Subject to CR-001's automatic fallback condition."
