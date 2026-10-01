@@ -133,3 +133,66 @@ git -C 'd:\Parker\Projects\sih\sih-agent-v2' init
 The rebuild should carry its **own** history. A clean, single-purpose repository is itself part of
 what a jury reads as engineering maturity — and it guarantees the v1 and v2 histories can never
 tangle.
+
+---
+
+## 8. Incident log — path-construction errors
+
+Two incidents have occurred against this protocol. Both were caught **after** writing, not before.
+They are recorded here because a control that has never failed in the record has not been tested —
+and this one has now failed twice.
+
+### INC-1 — Change request written into the v1 repository
+
+| Field | Value |
+|---|---|
+| **Symptom** | `CR-001` created at `sih26171\docs\00-governance\` instead of `sih-agent-v2\docs\00-governance\` |
+| **Impact** | One 4.9 KB file written into Agent 1's territory |
+| **Detection** | Post-write listing of v1 `docs/` revealed an unexpected `00-governance` directory |
+| **Root cause** | Absolute path constructed from memory rather than from a verified root |
+| **Correction** | Directory removed; v1 `docs/` verified restored to `audit` only |
+
+### INC-2 — Threat model written into the v1 repository
+
+| Field | Value |
+|---|---|
+| **Symptom** | `SEC-THREAT-001` (26.5 KB) created at `sih26171\sih-agent-v2\docs\05-security\` instead of `sih-agent-v2\docs\05-security\` |
+| **Impact** | One 26.5 KB file plus a stray directory tree in Agent 1's territory |
+| **Detection** | Post-write enumeration of v2's file listing found the threat model absent from its intended home |
+| **Root cause** | **Identical to INC-1.** The failing path `sih26171\sih-agent-v2` is a plausible-looking hybrid that does not exist |
+| **Correction** | File relocated to the correct root; stray tree removed; v1 root verified restored |
+
+### 8.1 Systemic root cause
+
+Both incidents share one cause. v2's absolute root is:
+
+```
+d:\Parker\Projects\sih\sih-agent-v2
+```
+
+Note what this path **does not contain**: the string `sih26171`. The two roots differ only in the
+final directory name, and the failing paths combined *both* names — `sih26171` **and** `sih-agent-v2`
+— producing a path that is plausible on sight and wrong in fact.
+
+### 8.2 Controls added
+
+| # | Control |
+|---|---|
+| **C-1** | Treat v2's root as a single constant. Any path embedding `sih26171\sih-agent` is **invalid by construction**. |
+| **C-2** | Before every commit, enumerate v1 and treat any path containing `sih-agent` as a defect requiring immediate relocation. |
+| **C-3** | Verify the intended destination directory exists **before** issuing a write, not after. |
+
+### 8.3 An honest note on detection versus prevention
+
+Both incidents were caught by **detection** — post-write verification — and not by **prevention**.
+The prevention control (C-1, C-3) is demonstrably weaker than the detection control (C-2): it
+failed twice where detection succeeded twice.
+
+This asymmetry is recorded deliberately. A future reader should not assume the pre-write checks are
+reliable, because the record shows they are not. The commit-time enumeration (C-2) is what has
+actually protected Agent 1's territory, and it is therefore the control that matters.
+
+| Item | State |
+|---|---|
+| v1 files modified by Agent 2 | **None.** Verified by enumeration before every commit. |
+| Incidents open | **0** — both closed, both verified clean |
