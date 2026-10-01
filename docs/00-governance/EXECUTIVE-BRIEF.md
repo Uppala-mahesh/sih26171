@@ -83,7 +83,7 @@ display as `—`.
 | # | Decision | Why it's yours |
 |---|---|---|
 | 1 | **Approve the blueprint?** | It sets the whole build. |
-| 2 | **Face/photo redaction — build it or drop it?** | It was promised in your demo script. Building it costs vision budget; dropping it means editing the demo script. Either is defensible — but we must not promise what we cannot do. |
+| 2 | ~~Face/photo redaction — build it or drop it?~~ **✅ DECIDED: BUILD** | `CR-001` **approved**. The demo script promised it, so we build it — with an automatic fallback to a declared limitation if it ever threatens the 25% visual weight. |
 | 3 | **Confirm the reuse ledger.** | It says what we keep from v1 and what we rewrite. ~10 minutes to skim; it prevents re-arguing later. |
 
 ## 7. Where to look if you want detail

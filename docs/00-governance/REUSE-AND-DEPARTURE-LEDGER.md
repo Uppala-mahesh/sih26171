@@ -73,7 +73,7 @@ in Sprint A, or you will break working behaviour for no measurable gain.
 | **WebGPU / ONNX-Runtime-Web / Transformers.js** | **Absent everywhere** — exhaustive grep for `navigator.gpu`, `requestAdapter`, `onnxruntime`, `ort.` returns zero hits in both extension and console, despite the problem statement naming these technologies explicitly. | Capability-laddered inference: WebGPU → WASM SIMD → WASM → DOM-only |
 | **Shared entity taxonomy (Python ↔ TypeScript)** | Absent. `perception/base.py` `EntityType` has no AADHAAR / PAN / UPI / OTP / IFSC / STUDENT_ID members, so those detections cannot cross the boundary without lossy coercion. | `packages/taxonomy` single registry → code generation for Python and TypeScript |
 | **Network-inspection demo proof** | Exists only as markdown prose (`docs/audit/egress-map.md`). No runtime, judge-visible payload inspector. | Live outbound-payload inspector in the console |
-| **Face / photo PII** | Absent — zero face detectors in either engine, yet `IDEA.md §30` lists "Face" in the promised demo. | Scoped decision via Change Request: build it, or remove it from the demo script |
+| **Face / photo PII** | Absent — zero face detectors in either engine, yet `IDEA.md §30` lists "Face" in the promised demo. | **Built new** — `CR-001` approved (Option A). Nothing is carried from v1; the detector is new capability, subject to that CR's automatic fallback condition. |
 | **Rubric scoring harness** | Partial and misaligned; 45% of the rubric unmeasured. | `benchmarks/` designed 1:1 against the five weights |
 
 ## 6. RETIRE — must not be reintroduced

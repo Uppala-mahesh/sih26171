@@ -111,19 +111,19 @@ substituted into sanitized output.
 | `DOB` | Date of birth | MEDIUM | T3 contextual | **Yes** | `<DOB_n>` | Requires a date-of-birth keyword |
 | `POSTAL_CODE_IN` | Indian PIN code | LOW | T2 format | No | `<PIN_n>` | 6 digits, first digit 1–9 |
 | `STUDENT_ID` | Roll / hall-ticket number | LOW | T3 contextual | **Yes** | `<ID_n>` | Institution-specific shapes; context mandatory |
-| `FACE_IMAGE` | Face in image | HIGH | T4 classifier | No | `<FACE_n>` | ⚠️ **PENDING `CR-001`** — not scheduled until the CR is closed |
+| `FACE_IMAGE` | Face in image | HIGH | T4 classifier | No | `<FACE_n>` | ✅ In scope per approved `CR-001`; subject to that CR's binding fallback condition |
 
 ### 3.1 Registry statistics
 
 | Class | Count | Entities |
 |---|---|---|
 | CRITICAL | 7 | `AADHAAR` · `CREDIT_CARD` · `PASSWORD` · `OTP` · `API_KEY` · `JWT` · `SECRET_GENERIC` |
-| HIGH | 5 | `PAN` · `UPI_VPA` · `MOBILE_IN` · `BANK_ACCOUNT` · `EMAIL` |
+| HIGH | 6 | `PAN` · `UPI_VPA` · `MOBILE_IN` · `BANK_ACCOUNT` · `EMAIL` · `FACE_IMAGE` |
 | MEDIUM | 5 | `IFSC` · `PHONE_INTL` · `PERSON_NAME` · `ADDRESS` · `DOB` |
 | LOW | 2 | `POSTAL_CODE_IN` · `STUDENT_ID` |
-| *Pending CR-001* | *1* | *`FACE_IMAGE` — excluded from sprint scope until the CR is closed* |
 
-**Active total: 19 entities** (20 including `FACE_IMAGE`, pending `CR-001`).
+**Active total: 20 entities.** `FACE_IMAGE` entered scope via approved `CR-001` (subject to that
+CR's automatic fallback condition).
 
 > **Note on scope growth.** v1 detected a subset of this registry. The additions — Aadhaar, PAN,
 > UPI, IFSC, OTP, and student IDs — are precisely the India-specific identifiers the problem
@@ -234,8 +234,8 @@ anywhere on the page is not evidence.
 
 | Metric | Value |
 |---|---|
-| Active entities | **19** |
-| Pending `CR-001` | 1 (`FACE_IMAGE`) |
+| Active entities | **20** |
+| Approved via `CR-001` | 1 (`FACE_IMAGE`) |
 | Sensitivity classes | 4 (CRITICAL, HIGH, MEDIUM, LOW) |
 | Verification tiers | 4 (T1 verified · T2 structured · T3 contextual · T4 semantic) |
 | Arithmetic validators | 2 (Luhn, Verhoeff) + 2 structural/entropy checks |

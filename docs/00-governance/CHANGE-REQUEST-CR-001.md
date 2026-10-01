@@ -95,9 +95,29 @@ than absorbed silently into the sprint.
 
 | Role | Decision | Date |
 |---|---|---|
-| Product Owner | ⬜ **PENDING** — Approve A / Approve B / Approve C | |
-| Technical Lead | Recommends **A**, with automatic fallback to **C** | |
+| Product Owner | ✅ **APPROVED — Option A** (implement face detection), with the binding fallback to Option C | 2026-10-01 |
+| Technical Lead | Recommended **A**; condition accepted | 2026-10-01 |
 
-**Interim handling:** until decided, `REQ-SRS-001` carries face detection as `FR-PII-FACE-1..3`
-marked **`MoSCoW: Could`** and **`STATUS: pending CR-001`**. No sprint may schedule them until
-this CR is closed. Nothing else in the requirements baseline is blocked by this decision.
+**Status: 🔒 CLOSED — APPROVED (Option A).**
+
+### 6.1 Consequences of approval
+
+1. `FR-PII-FACE-1..3` are promoted from *pending* to **active**, MoSCoW **`Should`**.
+2. `FACE_IMAGE` becomes an **active** entity in `REQ-DATA-001` — 20 active entities.
+3. Sprint A must publish the measured runtime cost of the chosen detector alongside the
+   element-classification F1 result.
+4. **The fallback condition remains binding and automatic.** If Sprint A exits with element
+   classification below macro-F1 0.90, this CR reverts to Option C **without further approval**:
+   face detection is dropped and `SEC-BOUND-001` records it as a declared limitation.
+5. Ground-truth fixtures — ≥ 40 labelled faces in `testdata/` — must exist before Sprint B may
+   claim `FR-PII-FACE-2`.
+
+### 6.2 Why Option A
+
+Face redaction is the only requirement in this baseline that a jury **sees** rather than reads.
+The detector is small (0.3–1.1 MB) and CPU-capable, so it respects constraint C-4 and the 15 MB
+package budget. PS171 is fundamentally about **visual** PII — a visual system that cannot see a
+face is an incomplete answer to the problem statement.
+
+The risk is real but bounded, and the automatic fallback means the 25% visual weight is never
+exposed to it.

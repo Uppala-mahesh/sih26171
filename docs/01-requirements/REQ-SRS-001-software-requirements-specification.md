@@ -41,7 +41,11 @@ confirmation · independent task verification · telemetry · rubric measurement
 
 **Out of scope** (binding — see `PROJECT-CHARTER.md` §4): Firefox port · cloud-primary reasoning ·
 multi-user deployment · mobile browsers · model training · CAPTCHA solving or authentication
-evasion · face/photo detection pending `CR-001`.
+evasion.
+
+*(Face/photo detection was previously listed here as pending `CR-001`. **`CR-001` is now
+approved** — face detection is in scope as `FR-PII-FACE-1..3`, subject to the binding fallback
+condition described in that CR.)*
 
 ### 1.3 Definitions, Acronyms and Abbreviations
 
@@ -228,9 +232,9 @@ Part 2. Every gap below was verified against v1 source during the Phase 1 audit.
 | `FR-PII-7` | Detection quality shall be reported as **both** precision and recall against the labelled corpus, with a published confusion matrix. | Recall ≥ 0.98 and Precision ≥ 0.95, reported per entity class and not only in aggregate | Must |
 | `FR-PII-8` | The Python and JavaScript runtimes shall expose an **identical** entity set. | Cross-runtime parity test fails the build on any divergence | Must |
 | `FR-PII-9` | A detection that cannot reach the confidence threshold shall emit `UNCERTAIN` and fail closed by redacting, never by passing through. | Ambiguous inputs are redacted and marked `UNCERTAIN` in the sanitized output | Must |
-| `FR-PII-FACE-1` | The system shall detect faces within the perceived viewport. | ≥ 90% recall on the ≥ 40-fixture labelled face set | 🔶 Pending `CR-001` |
-| `FR-PII-FACE-2` | Detected face regions shall be redacted with the same verification guarantees as `FR-RED`. | Independent re-scan finds zero residual faces in redacted output | 🔶 Pending `CR-001` |
-| `FR-PII-FACE-3` | Face detection cost shall be reported and shall not push the extension package above 15 MB. | Measured package size ≤ 15 MB with the detector present | 🔶 Pending `CR-001` |
+| `FR-PII-FACE-1` | The system shall detect faces within the perceived viewport. | ≥ 90% recall on the ≥ 40-fixture labelled face set | Should |
+| `FR-PII-FACE-2` | Detected face regions shall be redacted with the same verification guarantees as `FR-RED`. | Independent re-scan finds zero residual faces in redacted output | Should |
+| `FR-PII-FACE-3` | Face detection cost shall be reported and shall not push the extension package above 15 MB. | Measured package size ≤ 15 MB with the detector present | Should |
 
 ### 3.4 Redaction — `FR-RED`
 
@@ -436,7 +440,7 @@ is treated as unmet.
 |---|---|---|
 | `FR-PER` — Perception | 7 | Visual 25% |
 | `FR-VIS` — UI Element Understanding | 7 | Visual 25% |
-| `FR-PII` — Sensitive-Data Detection | 9 (+3 pending) | PII precision & recall 20% |
+| `FR-PII` — Sensitive-Data Detection | 12 | PII precision & recall 20% |
 | `FR-RED` — Redaction | 8 | Redaction precision 20% |
 | `FR-VLT` — Placeholder Vault | 7 | Redaction precision 20% |
 | `FR-EGR` — Egress Control | 7 | PII 20% |
@@ -447,20 +451,24 @@ is treated as unmet.
 | `FR-CAP` — Capability Ladder | 9 | Client resources 20% |
 | `FR-UI` — User Surfaces | 8 | — |
 | `FR-TEL` — Telemetry | 9 | All weights |
-| **Total** | **99 approved + 3 pending `CR-001`** | |
+| **Total** | **102 approved** | |
 
 ### 5.2 MoSCoW distribution
 
 | Priority | Count | Note |
 |---|---|---|
 | **Must** | 87 | The baseline fails without these |
-| **Should** | 12 | Expected within this delivery; first to be deferred under time pressure |
-| **Could** | 3 | The `FR-PII-FACE-*` group, pending `CR-001` |
+| **Should** | 15 | Expected within this delivery; first to be deferred under time pressure |
+| **Could** | 0 | — |
 
-> **There are no approved `Could` requirements.** The baseline is deliberately tight — every
-> approved requirement either protects a rubric weight or protects the privacy invariant. If
-> schedule pressure arrives, the correct response is to reduce *quality within a requirement* or
-> defer a `Should`, not to add scope.
+> **There are no `Could` requirements.** The baseline is deliberately tight — every requirement
+> either protects a rubric weight or protects the privacy invariant. Under schedule pressure the
+> correct response is to reduce *quality within a requirement* or defer a `Should` — never to add
+> scope.
+>
+> **First `Should` to be deferred:** the `FR-PII-FACE-*` group. `CR-001` pre-authorises this
+> **automatically** if Sprint A exits with element classification below macro-F1 0.90, because the
+> 25% visual weight must never be exposed to protect an unscored capability.
 
 ### 5.3 Requirements that deliberately exceed v1
 
