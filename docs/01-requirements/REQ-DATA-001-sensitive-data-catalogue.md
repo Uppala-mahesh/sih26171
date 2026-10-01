@@ -4,7 +4,7 @@
 |---|---|
 | Document ID | `REQ-DATA-001` |
 | Version | 1.0 — Draft |
-| Status | 🟡 Draft — **Part 1 of 2** (purpose, classification model, entity registry) |
+| Status | 🟡 **Complete — awaiting Product Owner approval** |
 | Owner | Technical Lead |
 | **Authority** | **This document is the single source of truth for the PII entity taxonomy.** |
 | Generates | `packages/taxonomy/entities.yaml` → `entities.py` + `entities.ts` |
@@ -130,4 +130,116 @@ substituted into sanitized output.
 > statement names, and precisely the ones v1 could not carry across the boundary. They are
 > therefore **requirements**, not enhancements.
 
-<!-- APPEND-POINT -->
+## 4. Validation rules
+
+Structural shape alone is not evidence. Each `T1` entity must pass an arithmetic check, and every
+entity must be normalised before validation. **This section is how the 20% precision weight is
+defended** — v1 admitted any 13–19 digit run as a card number.
+
+### 4.1 Normalisation (applies before every check)
+
+| Step | Rule |
+|---|---|
+| N-1 | Strip whitespace, `-`, and `.` from numeric-shaped candidates |
+| N-2 | Uppercase alphabetic-shaped candidates (`PAN`, `IFSC`) |
+| N-3 | Reject any candidate containing a character outside its declared alphabet |
+| N-4 | Reject candidates whose length falls outside the declared bounds |
+
+### 4.2 Arithmetic validators
+
+| Entity | Validator | Definition |
+|---|---|---|
+| `CREDIT_CARD` | **Luhn** | Doubling every second digit from the right; subtract 9 where the result exceeds 9; the total must be ≡ 0 (mod 10). |
+| `AADHAAR` | **Verhoeff** | Dihedral D₅ checksum over the 12 digits. **This is the actual Aadhaar checksum** — it is not Luhn, and using Luhn here produces both false positives and false negatives. |
+| `API_KEY` | Prefix + entropy | Must match a provider prefix (`AIza…`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `sk-`) **and** exceed a Shannon-entropy floor. |
+| `JWT` | Structure | Exactly three base64url segments; the first two must decode to valid JSON. |
+| `SECRET_GENERIC` | Entropy + context | Shannon entropy above the configured floor **and** a secret keyword in context. |
+
+### 4.3 Structural validators
+
+| Entity | Rule |
+|---|---|
+| `PAN` | `[A-Z]{5}[0-9]{4}[A-Z]`; the 4th character must be a recognised holder-type code (`P`, `C`, `H`, `F`, `A`, `T`, `B`, `L`, `J`, `G`) |
+| `IFSC` | `[A-Z]{4}0[A-Z0-9]{6}`; the 5th character is always literally `0` |
+| `UPI_VPA` | `localpart@handle`, where `handle` must appear in the maintained PSP allowlist |
+| `MOBILE_IN` | 10 digits, first digit in `6–9`; optional `+91` or `0` prefix stripped in normalisation |
+| `POSTAL_CODE_IN` | 6 digits, first digit `1–9` (a leading `0` is invalid) |
+
+### 4.4 Validation outcome discipline
+
+| Situation | Outcome |
+|---|---|
+| Validator **passes** | Detector may emit a positive finding at high confidence |
+| Validator **fails** | Finding is **discarded** — never downgraded to a lower-confidence positive |
+| Validator **errors** | Emit `NOT_INSTRUMENTED` and fail closed (`FR-PII-9`) |
+
+> A failing checksum is *evidence against* the match. Downgrading it to "probably still a card"
+> is the exact behaviour that destroys precision.
+
+---
+
+## 5. Context gating
+
+`T3` entities require a context cue in addition to shape. Context must be **local** — a keyword
+anywhere on the page is not evidence.
+
+| Rule | Statement |
+|---|---|
+| G-1 | The cue must appear within a bounded window of the candidate (default: same text node or an immediately adjacent one). |
+| G-2 | The cue must be matched **whole-word** and case-insensitively. |
+| G-3 | The cue list is defined per entity in the catalogue and may not be extended by a detector at runtime. |
+| G-4 | Absence of a cue yields `UNCERTAIN`, which fails closed by redacting (`FR-PII-9`) — it never yields a silent pass-through. |
+| G-5 | A cue that appears **inside** the candidate value does not count as context (prevents self-justifying matches). |
+
+### 5.1 Worked example — why whole-word matching matters
+
+| Input | Correct outcome | Rationale |
+|---|---|---|
+| `account no: 123456789012` | `BANK_ACCOUNT` | Cue present, shape valid |
+| `Pinterest board 123456789` | Not a match | `Pin` inside `Pinterest` is not a whole-word cue |
+| `1234 5678 9012` with no context | `UNCERTAIN` | 12 digits alone is ambiguous between Aadhaar and a phone grouping |
+
+---
+
+## 6. Placeholder convention
+
+| Rule | Statement |
+|---|---|
+| P-1 | Format is `<TYPE_n>`, where `TYPE` is the entity ID and `n` is a per-observation counter starting at 1. |
+| P-2 | Numbering is **per entity type**, so `<AADHAAR_1>` and `<CARD_1>` coexist. |
+| P-3 | Identical original values within one observation receive identical placeholders, even across modalities (`FR-VLT-2`). |
+| P-4 | Distinct original values never share a placeholder (`FR-VLT-3`). |
+| P-5 | Only uppercase alphanumerics and underscore are permitted inside the token — no spaces, no punctuation. |
+| P-6 | **Collision guard.** If the source page already contains text matching a placeholder pattern, the placeholder namespace shall be offset until no collision exists, because a page must not be able to forge a token that later detokenizes to attacker-chosen content. |
+
+> **P-6 is a security control, not a formatting rule.** Without it, a hostile page could embed the
+> literal string `<EMAIL_1>` in its own content, and any downstream detokenization would treat
+> page-authored text as vault-authoritative.
+
+---
+
+## 7. Cross-runtime parity
+
+| Rule | Statement |
+|---|---|
+| X-1 | This catalogue generates `packages/taxonomy/entities.yaml`, which generates `entities.py` and `entities.ts`. Hand-editing generated output is prohibited. |
+| X-2 | Generated files carry a content hash and the catalogue version. |
+| X-3 | A parity test asserts that Python and TypeScript expose an **identical** entity set, class, tier, and context requirement. |
+| X-4 | Any divergence **fails the build**. There is no warning-only mode. |
+| X-5 | Adding, renaming, or removing an entity is a versioned change requiring a catalogue version bump and a parity re-run. |
+
+---
+
+## 8. Catalogue summary
+
+| Metric | Value |
+|---|---|
+| Active entities | **19** |
+| Pending `CR-001` | 1 (`FACE_IMAGE`) |
+| Sensitivity classes | 4 (CRITICAL, HIGH, MEDIUM, LOW) |
+| Verification tiers | 4 (T1 verified · T2 structured · T3 contextual · T4 semantic) |
+| Arithmetic validators | 2 (Luhn, Verhoeff) + 2 structural/entropy checks |
+| Outcome states | 4 (`SANITIZED`, `DEGRADED`, `UNCERTAIN`, `NOT_INSTRUMENTED`) |
+| Consuming runtimes | 2 (Python, TypeScript) — kept in parity by X-3 |
+
+*End of `REQ-DATA-001`.*
