@@ -22,6 +22,20 @@ debt that prevents it from being defended under evaluation: duplicated privacy e
 non-overlapping PII vocabularies, a 1,738-line service worker, global mutable state, and
 **45% of the official rubric unmeasured**.
 
+### 1.1 Role within the submission
+
+Per `CR-002`, the submission comprises two **deliberate, complementary** components:
+
+| Component | Repository | Role |
+|---|---|---|
+| **Working prototype** | `../sih26171/` | Owns the live demonstration. |
+| **Engineering showcase** | `../sih-agent-v2/` *(this repository)* | Owns the SDLC artifacts, and the verifiable evidence behind every demonstrated claim. |
+
+v2 is therefore optimised for **engineering depth and verifiable evidence**, not feature breadth.
+Its code exists to prove what the demonstration asserts — see the **evidence bridge** in
+`CR-002` §5. A claim made in the demonstration for which v2 publishes no proving artifact is
+removed from the demo script rather than softened.
+
 ## 2. Problem statement (authoritative, condensed)
 
 AI browser agents require screen-state access to act. Current pipelines ship screenshots, DOM,
