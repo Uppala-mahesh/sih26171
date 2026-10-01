@@ -363,8 +363,10 @@ Charter gate **C-1** forbids claiming what has not been measured. This section s
 | **B-1…B-9** crossing enforcement | Zones, import rules, typed payloads | ✅ specified; **import-linter not yet wired** |
 | **B-6** target-bound detokenization | `PlaceholderVault.detokenize_for_target` | ✅ built + tested (4 refusal cases) |
 | **D-5 / D-6 / D-7** | TS types + runtime Pydantic | ✅ 2 type-enforced; `D-7` corrected to runtime assert |
-| **V-10** irreversible redaction | Sanitizer withholds output if any raw survives | ✅ mutation-verified |
-| **V-11** mask IoU ≥ 0.90 | Pixel redactor | ⬜ **not built** — vision engine |
+| **V-10** irreversible redaction | Text: sanitizer residual scan. Pixels: per-pixel survivor count | ✅ **mutation-verified on both paths** |
+| **V-11** mask IoU ≥ 0.90 | `PixelRedactor`, clamped box measured against the requested one | ✅ built + tested |
+| **V-12** utility preservation ≥ 0.95 | Pixels outside masks must be **byte-identical** | ✅ built + tested |
+| **FR-RED-2** opaque only | `MaskStyle` enum has exactly one member | ✅ built + tested |
 | **V-3** cross-origin frames | Declared, not solved | ⬜ structural (residual `R-1`) |
 | **V-5** WebGPU→WASM ladder | Capability resolver | ⬜ **not built** |
 
@@ -387,9 +389,33 @@ counts: by **removing the control and confirming the tests fail**.
 >
 > A security test that has only ever passed is a decoration. This one has been shown to fail.
 
-### 13.2 The honest gap
+### 13.3 Mutation testing found a vacuous test in this very module
 
-The **inbound** half of the boundary is implemented and attack-tested. The **pixel** half is not:
-text rendered as an image defeats every DOM-level control (`SEC-THREAT-001` AS-3), and only the
-vision engine closes that route. Until `V-11` exists, the system protects text thoroughly and
-pixels not at all. That gap is stated here rather than left for an evaluator to discover.
+The pixel redaction verification was mutation-tested by making the mask a **no-op** — the
+behaviour of a "blur that hides nothing", which is exactly the failure `FR-RED-2` prohibits.
+
+| Check | Before mutation testing | After |
+|---|---|---|
+| Opacity (`FR-RED-2`) | caught it | ✅ |
+| Irreversibility (`V-10`) | ❌ **passed vacuously** | ✅ now catches it |
+| Utility (`V-12`) | caught it | ✅ |
+
+**What the V-10 check got wrong.** It searched the output buffer for the masked region's byte
+*string*. But `region_bytes()` concatenates row by row while the buffer interleaves the other
+columns — so for any multi-row mask the string is **never contiguous**, and the search always
+reported "gone". A no-op mask passed a check written specifically to catch it.
+
+The corrected property is **per pixel**: a pixel survives only if it still carries its original
+value *and* is not the fill colour. That is now what both the verifier and the test assert.
+
+> This is the strongest argument for mutation testing in the whole project. The test was green,
+> the requirement was unmet, and no amount of reading the code would have revealed it. The
+> mutation did, in one run.
+
+### 13.4 The remaining honest gap
+
+`V-5` — the WebGPU → WASM SIMD → WASM → DOM-only capability ladder — is not built. Until it
+exists there is no mechanism that reports *which* rung is active, so the system cannot yet
+declare degradation truthfully for the vision path, which is where degradation actually happens.
+
+Cross-origin frames remain structurally unreadable (`R-1`); that is declared, not solved.

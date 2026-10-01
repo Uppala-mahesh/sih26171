@@ -27,6 +27,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.contracts.geometry import BoundingBox
 from app.contracts.sanitization import InferenceRung, SanitizedEvidence
 
 Destination = Literal["local_enclave", "external_provider"]
@@ -48,13 +49,6 @@ class StrictModel(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class BoundingBox(StrictModel):
-    x: float
-    y: float
-    width: float
-    height: float
 
 
 class ElementRef(StrictModel):
