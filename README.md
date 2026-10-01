@@ -93,10 +93,33 @@ sih-agent-v2/
 
 | Phase | State |
 |---|---|
-| Phase 0 — Inception | ✅ **Complete** — Charter, Reuse & Departure Ledger, Executive Brief, Isolation Protocol |
-| Phase 2 — Blueprint | ✅ **Presented** — target tree, module contracts, dependency rule, sprint plan |
-| Sprint 0 — Requirements & Design artifacts | ⬜ **Awaiting Product Owner approval** |
-| Production code | **None written** — correct for this phase |
+| **Phase 0 — Inception** | ✅ **Complete** — Charter · Reuse Ledger · Executive Brief · Isolation Protocol · `CR-001` · `CR-002` |
+| **Phase 1 — Requirements** | ✅ **Complete** — 155 requirements across 5 artifacts · *awaiting Product Owner sign-off on Gate G1* |
+| **Phase 2 — Design** | ⬜ **Next** — C4 architecture · class model · sequences · data contracts · state machines · threat model |
+| **Sprint 0 — Design artifacts + backlog** | ⬜ Pending Phase 2 |
+| **Production code** | **None written** — correct for this phase |
 
-**Repository location:** `d:\Parker\Projects\sih\sih-agent-v2` — fully independent of the v1 repo.
-**v1 code referenced by this repository: none.** All reuse is gated by the ledger.
+### 6.1 The requirements baseline
+
+| Artifact | Content |
+|---|---|
+| `REQ-SRS-001` | **102** functional requirements across 13 groups, plus 7 external interfaces |
+| `REQ-NFR-001` | **53** non-functional requirements across 8 categories |
+| `REQ-DATA-001` | **20** PII entities · 4 sensitivity classes · 4 verification tiers · validation, context-gating, and cross-runtime parity rules |
+| `REQ-UC-001` | **16** use cases · 3 primary + 3 supporting actors · **1 adversarial actor** |
+| `REQ-RTM-001` | Bidirectional traceability · all **5 of 5** rubric weights mapped · all **10 of 10** audit defects mapped to closing requirements |
+
+**Every count above is verified against the documents themselves during the build, not asserted.**
+Gate G1 stands at 9 of 10 criteria met.
+
+### 6.2 Definition of the submission
+
+Per `CR-002`, the submission has two **deliberate** components:
+
+| Component | Repository | Role |
+|---|---|---|
+| Working prototype | `../sih26171/` | Owns the live demonstration |
+| Engineering showcase | *(this repository)* | Owns the SDLC artifacts and the verifiable evidence |
+
+The **evidence bridge** (`CR-002` §5) binds them: for every claim the demonstration makes, this
+repository publishes an artifact that independently produces or verifies it. **v1 asserts, v2 proves.**
