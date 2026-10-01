@@ -347,3 +347,49 @@ preferences:
 > Z5 never sees page data at all.**
 
 *End of `SEC-BOUND-001`. Next: `SEC-THREAT-001` (threat model — attacks this boundary), then `DES-ARCH-001` (architecture — derived from it).*
+
+---
+
+## 13. Enforcement status — what is built versus what is verified
+
+Charter gate **C-1** forbids claiming what has not been measured. This section separates the two.
+
+| Rule | Mechanism | Status |
+|---|---|---|
+| **S-1** spans replaced or masked | `Sanitizer` | ✅ built + tested |
+| **S-2** independent re-verification | `EgressGuard.revalidate`, sanitizer residual scan | ✅ built + **mutation-verified** |
+| **S-3** declared state matches reality | `SanitizedEvidence` (Pydantic, runtime-enforced) | ✅ built + tested |
+| **S-4** no vault or raw data in a payload | `extra="forbid"`, no such field exists | ✅ built + tested |
+| **B-1…B-9** crossing enforcement | Zones, import rules, typed payloads | ✅ specified; **import-linter not yet wired** |
+| **B-6** target-bound detokenization | `PlaceholderVault.detokenize_for_target` | ✅ built + tested (4 refusal cases) |
+| **D-5 / D-6 / D-7** | TS types + runtime Pydantic | ✅ 2 type-enforced; `D-7` corrected to runtime assert |
+| **V-10** irreversible redaction | Sanitizer withholds output if any raw survives | ✅ mutation-verified |
+| **V-11** mask IoU ≥ 0.90 | Pixel redactor | ⬜ **not built** — vision engine |
+| **V-3** cross-origin frames | Declared, not solved | ⬜ structural (residual `R-1`) |
+| **V-5** WebGPU→WASM ladder | Capability resolver | ⬜ **not built** |
+
+### 13.1 Mutation verification — the control that matters most
+
+`V-2` is the single most important control in this document, so it was tested the only way that
+counts: by **removing the control and confirming the tests fail**.
+
+| Mutation injected | Result |
+|---|---|
+| Replace `self.revalidate(envelope)` with a stub returning "clean" — i.e. **trust the sender** | **6 tests failed**, led by `test_v2_forged_sanitized_payload_is_refused` |
+
+> That mutation is **precisely the v1 design**. v1 accepted an `is_sanitized: true` boolean from
+> the sender, and when the vision pipeline silently failed it produced a 1×1 image carrying that
+> boolean, which the backend accepted as sanitized (defects `G-2` and `G-6`).
+>
+> With this control in place, that mutation **breaks the build**. The guard does not trust the
+> sender: it strips its own placeholder tokens, re-runs the full detector over everything that
+> would go on the wire, and refuses when anything sensitive survives.
+>
+> A security test that has only ever passed is a decoration. This one has been shown to fail.
+
+### 13.2 The honest gap
+
+The **inbound** half of the boundary is implemented and attack-tested. The **pixel** half is not:
+text rendered as an image defeats every DOM-level control (`SEC-THREAT-001` AS-3), and only the
+vision engine closes that route. Until `V-11` exists, the system protects text thoroughly and
+pixels not at all. That gap is stated here rather than left for an evaluator to discover.

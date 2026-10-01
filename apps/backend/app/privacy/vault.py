@@ -37,6 +37,20 @@ from typing import Mapping
 # Token shape: <TYPE_n#NONCE>. The nonce makes the namespace unforgeable.
 TOKEN_RE = re.compile(r"^<(?P<type>[A-Z_]+)_(?P<index>\d+)#(?P<nonce>[0-9a-f]{8})>$")
 
+# Unanchored form, used when stripping our own tokens out of text BEFORE a
+# re-inspection scan. Without this, the nonce digits inside a token would be
+# re-detected as an OTP and every scan would carry self-inflicted noise.
+TOKEN_SCAN_RE = re.compile(r"<[A-Z_]+_\d+#[0-9a-f]{8}>")
+
+
+def strip_tokens(text: str) -> str:
+    """Remove our own placeholder tokens from ``text``.
+
+    Used by the egress re-inspection so that verification examines only
+    page-authored content, not the system's own substitutions.
+    """
+    return TOKEN_SCAN_RE.sub(" ", text)
+
 NONCE_BYTES = 4
 
 
