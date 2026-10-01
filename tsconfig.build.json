@@ -1,0 +1,19 @@
+{
+  "//": "Emit runnable JavaScript for the cross-runtime parity harness. CommonJS output so Node resolves the extensionless imports the TypeScript sources use. The strict typecheck still runs against tsconfig.json.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["packages/**/*.ts"],
+  "exclude": ["node_modules", "**/vendor/**", "tests/**", "dist/**"]
+}

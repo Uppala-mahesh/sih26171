@@ -222,11 +222,36 @@ anywhere on the page is not evidence.
 
 | Rule | Statement |
 |---|---|
-| X-1 | This catalogue generates `packages/taxonomy/entities.yaml`, which generates `entities.py` and `entities.ts`. Hand-editing generated output is prohibited. |
-| X-2 | Generated files carry a content hash and the catalogue version. |
-| X-3 | A parity test asserts that Python and TypeScript expose an **identical** entity set, class, tier, and context requirement. |
+| X-1 | This catalogue is the single source. The **Python** runtime loads it directly; the **TypeScript** runtime consumes code generated from it, because a browser cannot read YAML. Hand-editing generated output is prohibited. |
+| X-2 | Generated output carries the catalogue version. |
+| X-3 | A parity test asserts both runtimes expose an identical entity set **and** produce identical findings over a shared corpus. |
 | X-4 | Any divergence **fails the build**. There is no warning-only mode. |
-| X-5 | Adding, renaming, or removing an entity is a versioned change requiring a catalogue version bump and a parity re-run. |
+| X-5 | Adding, renaming, or removing an entity requires a catalogue version bump and a parity re-run. |
+
+### 7.1 Enforcement status — implemented and verified
+
+| Rule | Enforced by | Verified |
+|---|---|---|
+| X-1 | `infra/generate_taxonomy.py --check` fails when the generated registry is stale | ✅ |
+| X-2 | `TAXONOMY_VERSION` emitted into the generated module | ✅ |
+| X-3 | `tests/contract/test_parity.py` compares both runtimes over `testdata/parity_corpus.json` (12 cases) | ✅ |
+| X-4 | The parity test asserts equality and reports per-case divergence; **mutation-verified** | ✅ |
+| X-5 | Version bump + re-run form part of the change procedure | ✅ documented |
+
+> **The parity test was mutation-tested, not merely run.** Two deliberate faults were injected
+> into the TypeScript runtime to confirm the test actually fails when it should:
+>
+> 1. **Widening the context window** produced *no* divergence — because `resolveOverlaps`
+>    already shadows the affected spans. That mutation was behaviour-neutral, not a missed
+>    failure. Worth stating plainly: a null result here would have been easy to misread as
+>    "the test is broken", when the truth was "the mutation was a no-op".
+> 2. **Forcing `verhoeffValid` to always return `true`** failed the test as required, with the
+>    divergent findings printed side by side.
+>
+> A test that has only ever passed proves nothing. This one has been shown to fail.
+>
+> This is the direct fix for v1 defect **G-1**, where two PII engines drifted apart silently
+> because nothing ever compared them.
 
 ---
 

@@ -1,0 +1,53 @@
+{
+  "_comment": "Shared cross-runtime parity corpus. REQ-DATA-001 rules X-1..X-5 require the Python and TypeScript detectors to agree on what they DETECT, not merely on what they declare. Both runtimes read this file. Any divergence fails tests/contract/test_parity.py (rule X-4).",
+  "cases": [
+    {
+      "name": "banking page with one entity of each class",
+      "text": "Customer Details\nAadhaar: 9999 9999 0019\nPAN: ABCPH1234F\nUPI: parker@okhdfcbank\nIFSC: HDFC0001234\nMobile: +91 9876543210\nEmail: parker.sterling@example.com\nCard number: 4532 0151 1283 0366\nAccount no: 123456789012\nOTP: 847291\nAPI key: sk-abcdefghijklmnopqrstuvwxyz1234567890\nOrder ID: 1234567890123\nSession created 1700000000\n"
+    },
+    {
+      "name": "mixed case exercises the case-insensitive flag parity",
+      "text": "pan: abcph1234f\nifsc: hdfc0001234\nupi: user@OKHDFCBANK\nemail: MIXED.Case@Example.COM"
+    },
+    {
+      "name": "checksum failures must be discarded identically",
+      "text": "aadhaar 123456789012\ncard 4111111111111112\naadhaar 999999990018\ncard 4532015112830366"
+    },
+    {
+      "name": "context cue on a different line must not gate",
+      "text": "value: 123456789012\nunrelated line with no cue\naccount no: 999999999999"
+    },
+    {
+      "name": "adjacent digit runs are one number",
+      "text": "4532 0151 1283 0366\n9999 9999 0019\n1234567890123"
+    },
+    {
+      "name": "context cue absent leaves the finding uncertain",
+      "text": "the number 123456789012 appears with no cue at all"
+    },
+    {
+      "name": "context cue present on the same line",
+      "text": "account no 123456789012 end"
+    },
+    {
+      "name": "upi allowlist rejection",
+      "text": "user@example.com user@gmail.com user@okaxis ab@ybl"
+    },
+    {
+      "name": "pan holder type gate",
+      "text": "ABCDX1234F ABCPH1234F ABCDE1234 ZZZZGZ9999Z"
+    },
+    {
+      "name": "pin code leading zero rule",
+      "text": "012345 110001 560001"
+    },
+    {
+      "name": "empty and whitespace only",
+      "text": ""
+    },
+    {
+      "name": "no entities at all",
+      "text": "Welcome to our website. Please browse our catalogue."
+    }
+  ]
+}
