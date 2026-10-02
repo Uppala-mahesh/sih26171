@@ -42,6 +42,8 @@ RTM = ROOT / "docs" / "01-requirements" / "REQ-RTM-001-requirements-traceability
 # by prefix so a glob like `privacy/*` resolves to the directory.
 PATH_IN_BACKTICKS = re.compile(r"`([A-Za-z0-9_./*-]+)`")
 
+DESIGN_ARTIFACT = re.compile(r"DES-[A-Z]+-\d+")
+
 # Words that mark a cell as a deliberate non-implementation rather than a claim.
 NON_IMPLEMENTED_MARKERS = ("not started", "not implemented", "none", "n/a", "-")
 
@@ -76,7 +78,7 @@ def claimed_paths() -> list[str]:
         if len(cells) < 4:
             continue
         module_cell = cells[2]
-        if any(marker in module_cell.lower() for marker in NON_IMPLEMENTED_MARKERS):
+        if _is_disclosure_cell(module_cell):
             continue
         for candidate in PATH_IN_BACKTICKS.findall(module_cell):
             if "/" not in candidate and not candidate.endswith("*"):
@@ -113,10 +115,82 @@ def verify() -> dict:
     }
 
 
+def _is_disclosure_cell(cell: str) -> bool:
+    """Does this cell DECLARE that something is absent, rather than naming it?
+
+    Matches only whole-value markers. A substring test for "-" is a substring
+    test against every hyphenated identifier in the table.
+    """
+    normalised = cell.strip().strip("`* ").lower()
+    if normalised in {"-", "--", "none", "n/a", "tbd"}:
+        return True
+    return any(
+        phrase in cell.lower()
+        for phrase in ("not yet written", "not implemented", "not started")
+    )
+
+
+def claimed_design_artifacts() -> list[str]:
+    """Every DES-* artifact REQ-RTM-001 section 2 cites, whether or not it exists.
+
+    Checked separately from module paths because the two columns fail
+    differently. A missing module is a gap in the build; a missing DESIGN
+    artifact is a gap in the SDLC, and it is the one that lets a project look
+    engineered while having no design at all.
+    """
+    text = RTM.read_text(encoding="utf-8")
+    start = text.find("## 2. Functional requirement mapping")
+    if start == -1:
+        raise SystemExit("could not locate REQ-RTM-001 section 2")
+    candidates = [
+        text.find("### 2.1 Rubric coverage check"),
+        text.find("## 3. Non-functional requirement mapping"),
+    ]
+    candidates = [c for c in candidates if c != -1]
+    if not candidates:
+        raise SystemExit("could not locate the end of REQ-RTM-001 section 2")
+    section = text[start : min(candidates)]
+    found: list[str] = []
+    for line in section.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        # Columns: group | design | implementing module | verification | rubric
+        design_cell = cells[1] if len(cells) > 1 else ""
+        # A cell that says the artifact is not written is a DISCLOSURE, not a
+        # citation. Naming `DES-CLASS-001 NOT YET WRITTEN` must not make the
+        # verifier demand the file - that is the same trap as naming a missing
+        # module in prose, and it is why the marker is checked explicitly.
+        if _is_disclosure_cell(design_cell):
+            continue
+        for match in DESIGN_ARTIFACT.finditer(line):
+            if match.group(0) not in found:
+                found.append(match.group(0))
+    return found
+
+
+def verify_design() -> dict:
+    cited = claimed_design_artifacts()
+    present = []
+    missing = []
+    for artifact in cited:
+        matches = list((ROOT / "docs").rglob(f"{artifact}*.md"))
+        (present if matches else missing).append(artifact)
+    return {
+        "cited": len(cited),
+        "present": len(present),
+        "missing": len(missing),
+        "missing_artifacts": sorted(missing),
+        "present_artifacts": sorted(present),
+    }
+
+
 def main() -> int:
     report = verify()
+    design = verify_design()
+    report["design"] = design
     print(json.dumps(report, indent=2))
-    return 0 if not report["missing"] else 1
+    return 0 if not report["missing"] and not design["missing"] else 1
 
 
 if __name__ == "__main__":

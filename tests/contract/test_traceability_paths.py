@@ -25,7 +25,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "infra"))
 
-from verify_traceability import claimed_paths, verify  # noqa: E402
+from verify_traceability import (  # noqa: E402
+    _is_disclosure_cell,
+    claimed_design_artifacts,
+    verify,
+    verify_design,
+)
 
 # Groups that genuinely have no implementation. Listed here so that REMOVING the
 # disclosure is itself a failure: the day one of these ships, this set must shrink
@@ -89,3 +94,65 @@ def test_the_matrix_states_how_much_it_covers(report: dict) -> None:
     assert "NOT IMPLEMENTED" in text, (
         "the matrix no longer marks unimplemented groups; they must be visible"
     )
+
+
+# -- the design column, which failed the same way ------------------------------
+
+
+@pytest.fixture(scope="module")
+def design() -> dict:
+    return verify_design()
+
+
+def test_every_cited_design_artifact_exists(design: dict) -> None:
+    """The design column was fabricating too: 4 cited, 1 existed.
+
+    `services/`-scale claims are how a project looks engineered while having no
+    design at all. DES-CLASS-001 and DES-SEQ-001 were cited across eight rows and
+    have never been written; the matrix now says NOT YET WRITTEN instead.
+    """
+    assert not design["missing"], (
+        f"REQ-RTM-001 cites design artifacts that do not exist: "
+        f"{design['missing_artifacts']}. Write them or mark them absent."
+    )
+
+
+def test_the_verifier_can_still_see_design_citations(design: dict) -> None:
+    """Guards the opposite failure.
+
+    An earlier revision of `_is_disclosure_cell` tested for the substring `-`,
+    which matches every hyphenated identifier in the table. It skipped the entire
+    design column and reported `cited 0`, which would have passed forever.
+    """
+    assert design["cited"] >= 2, (
+        f"only {design['cited']} design artifacts detected; the scan is not "
+        f"looking at the column it claims to check"
+    )
+    assert "DES-ARCH-001" in design["present_artifacts"]
+
+
+def test_a_disclosure_cell_is_not_a_citation() -> None:
+    """Naming an absent artifact in order to declare it absent is not claiming it."""
+    assert _is_disclosure_cell("**DES-CLASS-001 NOT YET WRITTEN**")
+    assert _is_disclosure_cell("none")
+    assert _is_disclosure_cell("-")
+    assert not _is_disclosure_cell("`DES-ARCH-001` 5")
+    assert not _is_disclosure_cell("`REQ-DATA-001`, `DES-STATE-001` 4")
+
+
+def test_the_absent_design_artifacts_are_named_as_absent() -> None:
+    """They must stay visible, or the matrix quietly implies they exist."""
+    text = (
+        ROOT / "docs" / "01-requirements" / "REQ-RTM-001-requirements-traceability-matrix.md"
+    ).read_text(encoding="utf-8")
+    for absent in ("DES-CLASS-001", "DES-SEQ-001"):
+        assert absent in text, f"{absent} vanished from the matrix entirely"
+        assert "NOT YET WRITTEN" in text, (
+            "no design artifact is marked absent; the gaps must be visible"
+        )
+
+
+def test_cited_design_artifacts_are_a_subset_of_what_exists() -> None:
+    """Belt and braces: intersect the citation list with the filesystem."""
+    for artifact in claimed_design_artifacts():
+        assert list((ROOT / "docs").rglob(f"{artifact}*.md")), artifact

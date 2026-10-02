@@ -56,16 +56,16 @@ made mechanical.
 
 | Req group | Design artifact | Implementing module | Verification | Rubric |
 |---|---|---|---|---|
-| `FR-PER-1...7` | `DES-ARCH-001` 5, `DES-CLASS-001` | `apps/extension/src/offscreen.ts` (DOM capture, frame blindness) | `tests/contract/test_pipeline_end_to_end.py` | Visual 25% |
-| `FR-VIS-1...7` | `DES-ARCH-001` 6, `DES-CLASS-001` | `packages/vision/classify/role-classifier.ts`, `packages/vision/layout/` | `benchmarks/vision_quality.py`, `tests/contract/test_vision_quality.py` | **Visual 25%** |
-| `FR-PII-1...9` | `REQ-DATA-001`, `DES-CLASS-001` 4 | `apps/backend/app/privacy/detectors.py`, `packages/privacy/detector.ts`, `packages/taxonomy` | `benchmarks/pii_quality.py.py` (per-class P/R) | **PII 20%** |
-| `FR-RED-1...8` | `DES-CLASS-001` 5 | `apps/backend/app/privacy/pixels.py`, `packages/privacy/pixels.ts` | `benchmarks/redaction_precision.py.py`, `tests/contract/test_pixel_redaction.py` | **Redaction 20%** |
-| `FR-VLT-1...7` | `DES-CLASS-001` 5 | `apps/backend/app/privacy/vault.py`, `packages/privacy/vault.ts` | `tests/contract/test_sanitizer_and_vault.py`, `test_vault_parity.py` | Redaction 20% |
+| `FR-PER-1...7` | `DES-ARCH-001` 5` | `apps/extension/src/offscreen.ts` (DOM capture, frame blindness) | `tests/contract/test_pipeline_end_to_end.py` | Visual 25% |
+| `FR-VIS-1...7` | `DES-ARCH-001` 6, `DES-STATE-001` 5` | `packages/vision/classify/role-classifier.ts`, `packages/vision/layout/` | `benchmarks/vision_quality.py`, `tests/contract/test_vision_quality.py` | **Visual 25%** |
+| `FR-PII-1...9` | `REQ-DATA-001`, `DES-ARCH-001` 4 | `apps/backend/app/privacy/detectors.py`, `packages/privacy/detector.ts`, `packages/taxonomy` | `benchmarks/pii_quality.py.py` (per-class P/R) | **PII 20%** |
+| `FR-RED-1...8` | `DES-ARCH-001` 5, `DES-STATE-001` 4 | `apps/backend/app/privacy/pixels.py`, `packages/privacy/pixels.ts` | `benchmarks/redaction_precision.py.py`, `tests/contract/test_pixel_redaction.py` | **Redaction 20%** |
+| `FR-VLT-1...7` | `DES-ARCH-001` 5, `DES-STATE-001` 4 | `apps/backend/app/privacy/vault.py`, `packages/privacy/vault.ts` | `tests/contract/test_sanitizer_and_vault.py`, `test_vault_parity.py` | Redaction 20% |
 | `FR-EGR-1...7` | `DES-ARCH-001` 7, `SEC-BOUND-001` | `apps/backend/app/gateway/guard.py`, `packages/gateway/guard.ts` | `tests/contract/test_egress_guard.py`, `test_pixel_guard_parity.py` | PII 20% |
 | `FR-AGT-1...9` | `DES-ARCH-001` 7, `DES-STATE-001` | `packages/pipeline/orchestrator.ts` (capture, sanitize, mask, prove, guard) | `tests/contract/test_pipeline_end_to_end.py`, `benchmarks/resource_latency.py` | Latency 15% |
-| `FR-POL-1...8` | `SEC-BOUND-001`, `DES-CLASS-001` 7 | **NOT IMPLEMENTED** - no policy module exists | none | Credibility |
-| `FR-EXE-1...6` | `DES-SEQ-001` | **NOT IMPLEMENTED** - no execution module exists | none | Latency 15% |
-| `FR-VER-1...5` | `DES-CLASS-001` 8 | **NOT IMPLEMENTED** - no verifier module exists | none | Visual 25% |
+| `FR-POL-1...8` | `SEC-BOUND-001` | **NOT IMPLEMENTED** - no policy module exists | none | Credibility |
+| `FR-EXE-1...6` **DES-SEQ-001 NOT YET WRITTEN** | **NOT IMPLEMENTED** - no execution module exists | none | Latency 15% |
+| `FR-VER-1...5` **DES-CLASS-001 NOT YET WRITTEN** | **NOT IMPLEMENTED** - no verifier module exists | none | Visual 25% |
 | `FR-CAP-1...9` | `DES-ARCH-001` 6, `DES-STATE-001` | `packages/vision/capability/ladder.ts` | `tests/contract/test_capability_ladder.py`, `benchmarks/resource_latency.py` | **Resources 20%** |
 | `FR-UI-1...8` | `DES-ARCH-001` 8 | `apps/extension/src/content.ts` (collector only); no sidepanel, no console | `tests/contract/test_extension_artifact.py` | - |
 | `FR-TEL-1...9` | `REQ-DATA-001` | `benchmarks/` scorecards only; no telemetry module exists | `tests/contract/` scorecard gates | **All weights** |
