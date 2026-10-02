@@ -144,6 +144,65 @@ const SCENARIOS = [
     },
   },
   {
+    // The case that made the tool useless: a page with NO painted surfaces has
+    // nothing that could conceal text, so withholding protected nothing.
+    name: 'a text-only page is sanitized and transmitted',
+    async collect() {
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/article',
+        title: 'An article',
+        segments: [
+          { elementId: 'n0', text: 'Aadhaar 1234 5678 9012', tagName: 'P', ariaLabel: '' },
+          { elementId: 'n1', text: 'Ordinary prose.', tagName: 'P', ariaLabel: '' },
+        ],
+        frameBlind: false,
+        visualSurfaces: 0,
+      };
+    },
+    expect(seen) {
+      assert.equal(seen.badge.at(-1), 'OK', 'a text-only page should be SANITIZED');
+      assert.match(seen.title.at(-1), /transmitted: true/);
+    },
+  },
+  {
+    // The opposite case. A canvas can display a name that appears nowhere in the
+    // DOM, so this MUST still withhold - and must say which surface it saw.
+    name: 'a page with painted surfaces still withholds',
+    async collect() {
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/canvas',
+        title: 'A canvas page',
+        segments: [{ elementId: 'n0', text: 'Nothing sensitive here.', tagName: 'P', ariaLabel: '' }],
+        frameBlind: false,
+        visualSurfaces: 3,
+      };
+    },
+    expect(seen) {
+      assert.equal(seen.badge.at(-1), 'HOLD', 'painted content must NOT be declared clean');
+      assert.match(seen.title.at(-1), /transmitted: false/);
+    },
+  },
+  {
+    // An UNKNOWN count is not a clean bill of health. Defaulting it to 0 would be
+    // the exact optimistic failure the whole design exists to prevent.
+    name: 'an unknown surface count still withholds',
+    async collect() {
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/unknown',
+        title: 'Unknown',
+        segments: [{ elementId: 'n0', text: 'Nothing sensitive here.', tagName: 'P', ariaLabel: '' }],
+        frameBlind: false,
+        visualSurfaces: undefined,
+      };
+    },
+    expect(seen) {
+      assert.equal(seen.badge.at(-1), 'HOLD', 'an unknown count must not read as zero');
+    },
+  },
+  {
     name: 'a malformed payload is refused, not trusted',
     async collect() {
       return { kind: 'COLLECT', url: 'x', title: 'y' }; // no `segments`

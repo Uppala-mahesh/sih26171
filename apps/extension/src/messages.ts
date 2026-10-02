@@ -30,6 +30,20 @@ export interface CollectRequest {
   }>;
   /** FR-PER-4: cross-origin frame blindness, declared by the collector. */
   readonly frameBlind: boolean;
+  /**
+   * How many painted surfaces the page has: canvas, img, video, svg, and
+   * background-images.
+   *
+   * THIS IS THE COLLECTOR'S MOST IMPORTANT NUMBER. The text walker above cannot
+   * see text drawn into a canvas, burned into an image, or supplied by a CSS
+   * background - which is exactly where PII hides. The worker has no DOM and
+   * cannot rasterise, so this count is what lets it distinguish "this page has
+   * nothing to hide" from "this page may be hiding something I cannot see".
+   *
+   * `undefined` when the collector cannot tell. It is never defaulted to 0,
+   * because an unknown count must not read as a clean bill of health.
+   */
+  readonly visualSurfaces?: number | undefined;
 }
 
 /** Service worker → offscreen. The pipeline request. */

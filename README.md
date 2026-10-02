@@ -186,17 +186,32 @@ One was a race inherent to the API: `createDocument()` resolves when the documen
 the listener registration. **A security boundary should not be built on top of a
 race.**
 
-### What this costs, stated plainly
+### What it costs — and how that is measured
 
-A service worker has no `document`, so it **cannot rasterise page pixels**. This
-build therefore supplies no frames, the pipeline derives `NOT_INSTRUMENTED`, and
-the guard returns **`WITHHOLD`**. The badge says `HOLD`, and the tooltip says why.
+A service worker has no `document`, so it cannot rasterise page pixels. Rather
+than pretend otherwise, **the content script counts the surfaces that could
+conceal text** — `canvas`, `img`, `video`, `svg`, `object`, `embed`, and CSS
+`background-image` — and reports the number. It is the only context with a DOM,
+so it is the only one that can answer.
 
-This is the four-state contract doing its job rather than a workaround: the
-system reports "I could not check the pixels, so I am not transmitting" instead
-of claiming a clean scan of something it never saw. It is also **why the 25%
-visual weight is not yet earned** — pixel capture is genuinely unbuilt, and the
-pixel benchmarks measure the core algorithms, not a Chrome integration.
+That number decides the verdict:
+
+| Page | Verdict | Why |
+|---|---|---|
+| Plain text, no images/canvas | **`SANITIZED` → `OK`** | There is no painted content, so there are no pixels that could hide anything. Coverage is complete because there was nothing to cover. |
+| Any canvas/image/video/CSS background | **`WITHHOLD` → `HOLD`** | Painted content exists and cannot be inspected from here. |
+| Count unavailable | **`WITHHOLD` → `HOLD`** | An unknown count is never read as zero. |
+
+An earlier build returned zero frames unconditionally, which made the pipeline
+derive `NOT_INSTRUMENTED` on **every** page. That was fail-closed and useless —
+it protected nothing while making the tool incapable of doing anything at all.
+Conflating *"no pixels exist to check"* with *"I cannot check the pixels"* is the
+bug the `visualSurfaces` count removes.
+
+It is still true that the 25% visual weight is **not yet earned**: the pixel
+redaction, IoU, and irreversibility benchmarks measure the core algorithms, not
+a Chrome integration. Pages with painted content are withheld rather than
+scanned — honestly, and visibly.
 
 ## 9. Measured results
 

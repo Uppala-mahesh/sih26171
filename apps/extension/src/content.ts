@@ -75,6 +75,45 @@
     }
   }
 
+  /**
+   * Count the surfaces that can CONCEAL text from the walker above.
+   *
+   * A `<canvas>`, an `<img>` carrying a photographed ID, a `<video>` frame, an
+   * inline `<svg>` label, or a CSS background can all display a name or a number
+   * that appears nowhere in the DOM text. This is the collector's one job beyond
+   * walking text, and it is what makes the worker's verdict honest: if this
+   * returns 0, there is genuinely nothing painted, and "I checked the pixels"
+   * means "there were no pixels to check".
+   *
+   * Bounded and defensive: `getComputedStyle` throws on detached nodes, and a
+   * hostile page can contain thousands of elements.
+   */
+  function visualSurfaces() {
+    var selectors = 'canvas, img, video, svg, picture, object, embed, [style*="background"]';
+    var nodes;
+    try {
+      nodes = document.querySelectorAll(selectors);
+    } catch (error) {
+      return undefined; // unknown, not zero
+    }
+    var count = nodes.length;
+    try {
+      var all = document.querySelectorAll('*');
+      var limit = Math.min(all.length, 5000);
+      for (var i = 0; i < limit; i += 1) {
+        var el = all[i];
+        if (!el) continue;
+        var bg = window.getComputedStyle(el).backgroundImage;
+        if (bg && bg !== 'none') count += 1;
+      }
+    } catch (error) {
+      // A partial count would understate the risk, and understating it is the one
+      // direction this number must never err in.
+      return undefined;
+    }
+    return count;
+  }
+
   chrome.runtime.onMessage.addListener(
     function (message, _sender, sendResponse) {
       // Nothing happens on page load. Collection begins only when the operator
@@ -89,6 +128,7 @@
         title: document.title,
         segments: collect(),
         frameBlind: frameBlind(),
+        visualSurfaces: visualSurfaces(),
       });
       return false; // responded synchronously
     }

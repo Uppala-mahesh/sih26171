@@ -129,6 +129,24 @@ ws.send(JSON.stringify({ id: 2, method: 'Log.enable' }));
 ws.send(JSON.stringify({ id: 3, method: 'Runtime.runIfWaitingForDebugger' }));
 await sleep(500);
 
+// A service worker can be torn down and restarted between attaching and
+// evaluating. The first evaluation then lands in a context that has not been
+// initialised, which reports `chrome is not defined` - an artefact of the probe,
+// indistinguishable from a genuinely missing API. Retrying turns a flaky
+// diagnostic into a reliable one, and it is worth the wait: a tool that cries
+// wolf is the same failure mode as a test that passes vacuously.
+async function probeEventually(expression, attempts = 12) {
+  for (let i = 0; i < attempts; i += 1) {
+    const result = await probe(expression);
+    if (typeof result === 'string' && result.includes('chrome is not defined')) {
+      await sleep(400);
+      continue;
+    }
+    return result;
+  }
+  return await probe(expression);
+}
+
 let seq = 100;
 function probe(expression) {
   const id = seq++;
@@ -153,9 +171,9 @@ function probe(expression) {
 
 // THE CALL THAT HAS BEEN FAILING, executed for real against a real page.
 console.log('--- the failing call, run for real ---');
-console.log('tabs        :', await probe(`(async()=>{const t=await chrome.tabs.query({});
+console.log('tabs        :', await probeEventually(`(async()=>{const t=await chrome.tabs.query({});
   return t.map(x=>x.id+' '+String(x.url).slice(0,55)).join(' | ')||'NONE';})()`));
-console.log('sendMessage :', await probe(`(async()=>{
+console.log('sendMessage :', await probeEventually(`(async()=>{
   const t=(await chrome.tabs.query({})).find(x=>String(x.url).includes('test-page'));
   if(!t) return 'no test tab';
   try { const r = await chrome.tabs.sendMessage(t.id,{kind:'COLLECT'});
@@ -164,7 +182,7 @@ console.log('sendMessage :', await probe(`(async()=>{
 })()`));
 
 await sleep(600);
-console.log('badge api   :', await probe(`(async()=>{
+console.log('badge api   :', await probeEventually(`(async()=>{
   try { await chrome.action.setBadgeText({text:'OK'});
         await chrome.action.setTitle({title:'probe'});
         return 'setBadgeText + setTitle OK'; }
@@ -173,7 +191,7 @@ console.log('badge api   :', await probe(`(async()=>{
 
 // The boundary the user is most likely on. A chrome:// page cannot host a content
 // script for ANY extension, so this must fail - and must fail cleanly.
-console.log('chrome://   :', await probe(`(async()=>{
+console.log('chrome://   :', await probeEventually(`(async()=>{
   const t = await chrome.tabs.create({url:'chrome://extensions/'});
   await new Promise(r=>setTimeout(r,800));
   try { const r = await chrome.tabs.sendMessage(t.id,{kind:'COLLECT'});

@@ -104,6 +104,11 @@ function buildAdapters(
     // would put a fabricated number into the outbound payload.
     viewport: { width: 0, height: 0 },
     frameBlind: collected.frameBlind,
+    // The content script is the only context with a DOM, so it is the only one
+    // that can say whether painted content exists at all. This number decides
+    // between SANITIZED and WITHHOLD, and it is passed through UNVERIFIED: the
+    // worker never inspects or adjusts it.
+    visualSurfaces: collected.visualSurfaces,
     capability: { rung, canVerifyPixels: true },
     captureText: () =>
       collected.segments.map((segment) => ({
@@ -173,8 +178,12 @@ async function announce(result: PipelineResult): Promise<void> {
         `frames verified: ${result.framesVerified}\n` +
         `transmitted: ${result.transmitted}` +
         (reason ? `\n${reason}` : '') +
-        `\n\nNOTE: this build has no DOM, so page pixels cannot be inspected. ` +
-        `The payload is withheld rather than declared clean.`,
+        (state === 'SANITIZED'
+          ? '\n\nThis page has no images, canvas, video or CSS backgrounds, so' +
+            '\nthere are no painted pixels that could conceal text. The text was' +
+            '\ninspected and the sensitive values replaced with placeholders.'
+          : '\n\nThis page has painted content that cannot be inspected from here,' +
+            '\nso the payload is withheld rather than declared clean.'),
     });
   } catch (error) {
     console.warn('[sih] could not set the badge:', error);

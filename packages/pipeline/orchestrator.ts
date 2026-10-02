@@ -82,6 +82,20 @@ export interface PageAdapters {
   readonly capability: Capability;
   captureText(): readonly TextSegment[];
   captureFrames(): readonly FrameSegment[];
+  /**
+   * How many VISUAL surfaces the page contains: canvas, img, video, svg, and
+   * elements painted with a background-image.
+   *
+   * This is what separates "there is nothing to verify" from "I could not
+   * verify it", and conflating the two made the system withhold on EVERY page.
+   * A page of ordinary HTML text has no hidden pixels at all, so pixel coverage
+   * is complete and vacuous; withholding there protects nothing and disables the
+   * tool entirely.
+   *
+   * `undefined` means the collector could not tell, which is treated as unknown
+   * and therefore NOT complete. An absent answer is never an optimistic one.
+   */
+  readonly visualSurfaces?: number | undefined;
   now(): number;
 }
 
@@ -205,6 +219,20 @@ export function runPipeline(
     evidence = {
       state: 'NOT_INSTRUMENTED',
       missingCheck: adapters.capability.missingCheck ?? 'pixel_rescan',
+      declaredAt: now,
+    };
+  } else if (pixelFailure === null && residualFindings === 0 && adapters.visualSurfaces === 0) {
+    // No frames were captured AND the collector reports no visual surface at all,
+    // so there is no painted content that could conceal text the extractor missed.
+    // Coverage is complete because there was nothing to cover.
+    evidence = {
+      state: 'SANITIZED',
+      proof: verificationProof({
+        verifiersRun,
+        regionsChecked: segments.length,
+        residualFindings: 0,
+      }),
+      rung,
       declaredAt: now,
     };
   } else if (pixelFailure !== null || residualFindings > 0) {
