@@ -6,7 +6,7 @@
 | Version | 1.0 — Draft |
 | Status | 🟡 **Complete — awaiting Product Owner approval** |
 | Owner | Technical Lead |
-| Scope | 102 functional + 53 non-functional requirements = **155 requirements** |
+| Scope | 99 functional + 53 non-functional + 7 external interfaces = **159 requirements** |
 
 ---
 
@@ -131,7 +131,7 @@ The baseline is accepted when **all** of the following hold:
 
 | # | Criterion | State |
 |---|---|---|
-| 1 | `REQ-SRS-001` complete, all 102 requirements measurable | ✅ |
+| 1 | `REQ-SRS-001` written, 99 requirements measurable | 🟡 baseline only; see coverage |
 | 2 | `REQ-NFR-001` complete, all 53 requirements measurable | ✅ |
 | 3 | `REQ-DATA-001` complete; taxonomy authoritative and parity-ruled | ✅ |
 | 4 | `REQ-UC-001` complete; actors, use cases, include/extend, key flows | ✅ |
@@ -146,14 +146,41 @@ The baseline is accepted when **all** of the following hold:
 
 ## 6. Summary
 
+> ### ⚠️ Coverage disclosure — read this before citing this matrix
+>
+> This matrix traces **19 / 99** functional requirements (**19.2%**). It is **not
+> complete**, and it did not used to say so.
+>
+> Found by `infra/count_requirements.py`, which derives every count by reading
+> the documents rather than trusting a typed figure. Three artifacts had claimed
+> **"102 functional / 155 total"** while the SRS actually contains **99** and
+> **152** (excluding the 7 `EI-*` interface requirements) — **159** including
+> them. Those figures are corrected throughout.
+>
+> **Outstanding: 80 functional requirements have no row here.** That is the
+> largest single gap in the SDLC and the next thing to close.
+>
+> `tests/contract/test_requirement_counts.py` fails if this coverage figure ever
+> diverges from the documents, so the matrix can no longer silently overstate
+> itself.
+>
+> **Correction to an earlier correction.** A first pass of the counter reported
+> nine "phantom" requirement ids here. That was a bug in the counter, not a
+> defect in this matrix: the pattern `FR-[A-Z]+-\d+` also matches *inside*
+> `NFR-PERF-1`, so eight legitimate non-functional rows were misreported as
+> fabricated functional traceability. There are no phantom ids. The pattern now
+> anchors on a word boundary. This note is kept because a correction with no
+> stated original is indistinguishable from never having been wrong.
+
 | Dimension | Count |
 |---|---|
-| Functional requirements | **102** |
+| Functional requirements | **99** |
 | Non-functional requirements | **53** |
 | External interfaces | 7 |
-| **Total requirements** | **155** |
+| **Total requirements** | **159** |
 | Requirement groups | 21 |
-| Use cases | 16 |
+| Use cases | 17 |
+| **Functional requirements traced** | **19 / 99 (19.2%) — incomplete** |
 | Rubric weights mapped | **5 of 5** |
 | Audit defects mapped | **10 of 10** |
 | Change requests closed | 2 |

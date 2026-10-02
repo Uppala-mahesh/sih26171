@@ -77,7 +77,7 @@ condition described in that CR.)*
 ### 1.5 Document overview
 
 §1 Introduction. §2 Overall description — the trust gradient, function groups, constraints, and
-the ten verified v1 gaps this baseline must close. §3 Functional requirements — 102 requirements
+the ten verified v1 gaps this baseline must close. §3 Functional requirements — 99 requirements
 across 13 groups, plus external interface requirements. §4 Verification methods and traceability.
 §5 Summary and counts.
 
@@ -451,7 +451,7 @@ is treated as unmet.
 | `FR-CAP` — Capability Ladder | 9 | Client resources 20% |
 | `FR-UI` — User Surfaces | 8 | — |
 | `FR-TEL` — Telemetry | 9 | All weights |
-| **Total** | **102 approved** | |
+| **Total** | **99 approved** | |
 
 ### 5.2 MoSCoW distribution
 

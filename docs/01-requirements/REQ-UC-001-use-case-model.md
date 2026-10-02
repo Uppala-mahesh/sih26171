@@ -6,7 +6,7 @@
 | Version | 1.0 — Draft for approval |
 | Status | 🟡 **Complete — awaiting Product Owner approval** |
 | Owner | Technical Lead |
-| Traces to | `REQ-SRS-001` (102 functional requirements) |
+| Traces to | `REQ-SRS-001` (99 functional requirements) |
 | Traced by | `REQ-RTM-001` |
 
 ---

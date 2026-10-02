@@ -24,7 +24,7 @@ constraints that were fixed earlier.
   PROJECT-CHARTER      scope · credibility gates · rubric-weighted targets
         │
         ▼
-  REQ-SRS-001 (102)  ──►  REQ-NFR-001 (53)     what it must do · how well
+  REQ-SRS-001 (99)  ──►  REQ-NFR-001 (53)     what it must do · how well
         │                      │
         ▼                      ▼
   SEC-BOUND-001  ──►  obligations A-1 … A-8    what the boundary demands
