@@ -81,6 +81,210 @@ def node_results() -> dict:
     if proc.returncode != 0:
         raise AssertionError(f"node parity runner failed: {proc.stderr}")
     return json.loads(proc.stdout)
+
+
+# ── the exhaustive policy matrix ─────────────────────────────────────────────
+# "Can any combination of facts talk the engine into a forbidden action?" is the
+# most consequential question in the system, and ~12 hand-written cases answered
+# it. The evidence matrix exists because every BRANCH had a test and no
+# COMBINATION did; the same blind spot applies here with worse consequences.
+
+POLICY_MATRIX_RUNNER = ROOT / "tests" / "parity" / "run-policy-matrix.cjs"
+NOW_M = 1_000
+CEILING = 100
+ORIGIN = "https://app.test"
+ELEMENT = "btn-1"
+VALID_ACTIONS = ["OBSERVE", "DETOKENIZE", "TRANSMIT", "NOT_AN_ACTION"]
+APPROVAL_QUALITIES = ["none", "matching", "wrong-target", "wrong-origin", "expired"]
+
+
+def _matrix_approval(quality: str) -> Approval | None:
+    if quality == "none":
+        return None
+    return Approval(
+        scope=ApprovalScope(
+            action_type="TRANSMIT",
+            target_origin="https://evil.test" if quality == "wrong-origin" else ORIGIN,
+            target_element_id="btn-OTHER" if quality == "wrong-target" else ELEMENT,
+            issued_at=900,
+            expires_at=950 if quality == "expired" else 90_000,
+        )
+    )
+
+
+def _python_matrix() -> list[tuple[str, str, bool]]:
+    """The same cells through the Python port, for a cross-runtime comparison."""
+    out: list[tuple[str, str, bool]] = []
+    for action_type in VALID_ACTIONS:
+        for rule_present in (True, False):
+            for origin_ok in (True, False):
+                for payload_over in (False, True):
+                    for binding in (True, False):
+                        for irreversible in (False, True):
+                            for external in (False, True):
+                                for approval in APPROVAL_QUALITIES:
+                                    rules = (
+                                        [
+                                            PolicyRule(action_type=t, origins=(ORIGIN,))
+                                            for t in ACTION_TYPES
+                                        ]
+                                        if rule_present
+                                        else []
+                                    )
+                                    engine = PolicyEngine(
+                                        rules,
+                                        max_payload_bytes=CEILING,
+                                        now=lambda: NOW_M,
+                                    )
+                                    d = engine.evaluate(
+                                        ActionProposal(
+                                            action_type=action_type,
+                                            target_origin=(
+                                                ORIGIN if origin_ok else "https://elsewhere.test"
+                                            ),
+                                            target_element_id=ELEMENT,
+                                            irreversible=irreversible,
+                                            externally_visible=external,
+                                            payload_bytes=CEILING + 1 if payload_over else 10,
+                                            bound_observation_id="obs-1" if binding else None,
+                                        ),
+                                        _matrix_approval(approval),
+                                    )
+                                    out.append(
+                                        (d.decision, d.rule, d.approval_scope is not None)
+                                    )
+    return out
+
+
+@pytest.fixture(scope="module")
+def policy_matrix() -> dict:
+    if not ENGINE_JS.exists():
+        pytest.skip("dist/ not built; run: npm run build:parity")
+    proc = subprocess.run(
+        ["node", str(POLICY_MATRIX_RUNNER)],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(f"policy matrix runner failed: {proc.stderr}")
+    return json.loads(proc.stdout)
+
+
+def _label(c: dict) -> str:
+    return (
+        f"action={c['actionType']} rule={c['rulePresent']} originOk={c['originOk']} "
+        f"over={c['payloadOver']} binding={c['binding']} "
+        f"irrev={c['irreversible']} external={c['external']} approval={c['approval']}"
+    )
+
+
+def test_no_combination_of_facts_can_turn_a_refusal_into_a_permission(
+    policy_matrix: dict,
+) -> None:
+    """The security invariants, stated as properties rather than per-cell values.
+
+    A per-cell table can be edited to match whatever the code does. These cannot:
+    each is a property that must hold for EVERY cell, so a future change has to
+    break a rule in plain English rather than a row.
+    """
+    cells = policy_matrix["cells"]
+    assert cells, "the matrix runner produced no cells"
+
+    for c in cells:
+        label = _label(c)
+        d, rule = c["decision"], c["rule"]
+
+        # 1. Only three outcomes exist, and one is never anything else.
+        assert d in {"ALLOW", "CONFIRM", "BLOCK"}, f"{label}: unknown decision {d}"
+
+        # 2. Every hard refusal is unconditional. None of these has an "unless".
+        if c["actionType"] not in ACTION_TYPES:
+            assert d == "BLOCK" and rule == "closed-action-set", (
+                f"{label}: an action outside the closed set was not blocked"
+            )
+        if not c["rulePresent"]:
+            assert d == "BLOCK", f"{label}: no rule, yet the decision was {d}"
+        if not c["originOk"]:
+            assert d == "BLOCK", f"{label}: unpermitted origin, yet the decision was {d}"
+        if c["payloadOver"]:
+            assert d == "BLOCK", f"{label}: over the ceiling, yet the decision was {d}"
+        if c["actionType"] == "DETOKENIZE" and not c["binding"] and c["rulePresent"] and c["originOk"] and not c["payloadOver"]:
+            assert d == "BLOCK" and rule == "no-binding", (
+                f"{label}: detokenize without a B-6 binding was not blocked"
+            )
+
+        # 3. An irreversible or externally-visible action is NEVER allowed on an
+        #    approval that is absent, bound elsewhere, or expired. This is the
+        #    property that stops a confirmation becoming a standing permission.
+        if c["irreversible"] or c["external"]:
+            if c["approval"] in {"none", "wrong-target", "wrong-origin", "expired"}:
+                if d == "ALLOW":
+                    raise AssertionError(
+                        f"{label}: irreversible/external action ALLOWED on a "
+                        f"{c['approval']} approval"
+                    )
+
+        # 4. A confirmation always carries a scope; anything else never does.
+        if d == "CONFIRM":
+            assert c["scopeBound"], f"{label}: CONFIRM without an approval scope"
+        else:
+            assert not c["scopeBound"], f"{label}: {d} carried an approval scope"
+
+
+def test_every_policy_branch_is_reachable(policy_matrix: dict) -> None:
+    """A branch no cell reaches is a branch nobody has verified.
+
+    An earlier version of this matrix permitted only OBSERVE, so DETOKENIZE always
+    died at deny-by-default and the B-6 binding requirement - a security branch -
+    was never executed. The matrix looked comprehensive and was not.
+    """
+    produced = {(c["decision"], c["rule"]) for c in policy_matrix["cells"]}
+    expected = {
+        ("BLOCK", "closed-action-set"),
+        ("BLOCK", "deny-by-default"),
+        ("BLOCK", "origin-not-permitted"),
+        ("BLOCK", "payload-ceiling"),
+        ("BLOCK", "no-binding"),
+        ("CONFIRM", "human-confirmation-required"),
+        ("CONFIRM", "approval-out-of-scope"),
+        ("ALLOW", "permitted"),
+    }
+    assert produced == expected, (
+        "the matrix does not exercise every branch; "
+        f"missing {sorted(expected - produced)}, unexpected {sorted(produced - expected)}"
+    )
+
+
+def test_the_matrix_reached_every_cell(policy_matrix: dict) -> None:
+    """4 actions x 2 rule x 2 origin x 2 payload x 2 binding x 2 irrev x 2 external
+    x 5 approval = 1280. Asserted so a runner that skips a combination cannot pass
+    while every invariant above stays green."""
+    assert policy_matrix["cellCount"] == 1280, policy_matrix["cellCount"]
+    assert len(policy_matrix["cells"]) == 1280
+
+
+def test_both_runtimes_agree_on_every_matrix_cell(policy_matrix: dict) -> None:
+    """Parity at matrix scale, not just on hand-picked cases.
+
+    1280 cells is where a divergence stops being a curiosity. A policy engine that
+    permits in Node and refuses in Python is a confused deputy wearing two
+    uniforms - the same shape as the audit's detector drift, one layer up.
+    """
+    js = [(c["decision"], c["rule"], c["scopeBound"]) for c in policy_matrix["cells"]]
+    py = _python_matrix()
+    assert len(js) == len(py), f"cell counts differ: {len(js)} vs {len(py)}"
+
+    divergences = [
+        (_label(c), js[i], py[i])
+        for i, c in enumerate(policy_matrix["cells"])
+        if js[i] != py[i]
+    ]
+    assert not divergences, (
+        f"{len(divergences)} cells diverge between runtimes; first: {divergences[0]}"
+    )
+
+
 def _proposal(raw: dict) -> ActionProposal:
     return ActionProposal(
         action_type=raw["actionType"],
