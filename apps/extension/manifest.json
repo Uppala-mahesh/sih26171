@@ -26,6 +26,10 @@
     "default_title": "SIH26171 Privacy Agent"
   },
 
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+
   "web_accessible_resources": [],
 
   "content_security_policy": {

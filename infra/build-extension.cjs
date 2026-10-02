@@ -97,6 +97,19 @@ place(
   path.join('background', 'messages.js'),
   null,
 );
+// The side panel is an extension PAGE, so it lives in its own directory and needs
+// messages.js beside it. A panel importing a module that only exists under
+// background/ fails at load, not at test time.
+place(
+  path.join('apps', 'extension', 'src', 'messages.js'),
+  path.join('sidepanel', 'messages.js'),
+  null,
+);
+place(
+  path.join('apps', 'extension', 'src', 'sidepanel.js'),
+  path.join('sidepanel', 'sidepanel.js'),
+  null,
+);
 
 // The privacy core is imported by the service worker, so it must ship too.
 const copyTree = (from, to) => {
@@ -110,10 +123,15 @@ const copyTree = (from, to) => {
 };
 copyTree(path.join(OUT, 'packages'), path.join(OUT, 'packages'));
 
-// The manifest itself is static.
+// The manifest itself, plus the static HTML hosts.
 fs.copyFileSync(
   path.join(ROOT, 'apps', 'extension', 'manifest.json'),
   path.join(OUT, 'manifest.json'),
+);
+fs.mkdirSync(path.join(OUT, 'sidepanel'), { recursive: true });
+fs.copyFileSync(
+  path.join(ROOT, 'apps', 'extension', 'sidepanel.html'),
+  path.join(OUT, 'sidepanel', 'sidepanel.html'),
 );
 
 // Remove tsc's intermediate tree: it is a duplicate of files already placed, and
@@ -176,6 +194,10 @@ const required = [
   // The worker imports the privacy core, so the core must actually be present.
   // Its absence produced a build that looked fine and failed at load.
   'packages/gateway/guard.js',
+  // The side panel is an extension page: its HTML must ship, or Chrome shows an
+  // empty panel with no error anywhere that would explain why.
+  'sidepanel/sidepanel.html',
+  'sidepanel/sidepanel.js',
 ];
 const missing = required.filter((rel) => !fs.existsSync(path.join(OUT, rel)));
 if (missing.length > 0) {

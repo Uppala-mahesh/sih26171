@@ -3,18 +3,25 @@
  *
  * Zone layout, and why it is drawn this way (SEC-BOUND-001 §3):
  *
- *   page DOM  ──content script──▶  service worker  ──▶  OFFSCREEN DOCUMENT
- *   (untrusted)   collector only      coordinator         Z1: DOM + pixels
- *                                                     + vault + guard
+ *   page DOM  ──content script──▶  SERVICE WORKER
+ *   (untrusted)   collector only       Z1: vault + detector + sanitizer + guard
  *
- * The raw sensitive content lives in exactly ONE place: the offscreen document.
- * The service worker coordinates and never holds page text; the content script
- * collects and never sees the vault. That is what makes DP-5 ("no outbound type
- * can hold raw content") structural rather than a promise.
+ * The raw sensitive content lives in exactly ONE place: the worker. The content
+ * script collects and never sees the vault, detector or guard — it has no runtime
+ * imports at all. That is what makes DP-5 ("no outbound type can hold raw
+ * content") structural rather than a promise.
  *
- * `connect-src 'none'` in the manifest is the same idea at the network layer:
- * there is no code path from this extension to a remote origin. Egress means
- * handing an envelope to the local enclave, and nothing else.
+ * Z1 was an offscreen document until its module-evaluation race produced two
+ * separate "Receiving end does not exist" failures; see README §8. The message
+ * types that race required are gone from this file rather than left behind as
+ * dead protocol.
+ *
+ * Network egress is prevented by the CODE, not by a CSP string: no `fetch`,
+ * `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon` or `importScripts`
+ * appears anywhere in the shipped artifact, asserted by
+ * `test_extension_declares_no_network_egress`. (An earlier manifest used
+ * `connect-src 'none'`, which MV3 does not permit for extension pages — Chrome
+ * refused to install it.)
  */
 
 /** Content script → service worker. Raw text, which is why it stops here. */
@@ -45,61 +52,50 @@ export interface CollectRequest {
    */
   readonly visualSurfaces?: number | undefined;
 }
-
-/** Service worker → offscreen. The pipeline request. */
-export interface ObserveRequest {
-  readonly kind: 'OBSERVE';
+/** What the side panel is allowed to display. Counts and verdicts, never values. */
+export interface ReportView {
+  readonly kind: 'REPORT';
   readonly observationId: string;
-  readonly taskDescription: string;
-  readonly collected: CollectRequest;
-}
-
-/** Offscreen → service worker: "my module has evaluated, I have a listener". */
-export interface OffscreenReady {
-  readonly kind: 'OFFSCREEN_READY';
+  readonly capturedAt: number;
+  readonly state: string;
+  readonly verdict: string;
+  readonly rung: string;
+  readonly redactionCount: number;
+  readonly textSegments: number;
+  readonly framesVerified: number;
+  readonly visualSurfaces?: number | undefined;
+  readonly transmitted: boolean;
+  readonly reason: string | null;
+  readonly schemaVersion?: string | undefined;
+  readonly destination?: string | undefined;
 }
 
 /**
- * `chrome.offscreen.createDocument()` resolves when the DOCUMENT exists, not
- * when its module has EVALUATED. The offscreen document registers its
- * `chrome.runtime.onMessage` listener as a side effect of module evaluation, so
- * a `sendMessage` issued the instant `createDocument` resolves races that
- * listener and fails with "Receiving end does not exist".
+ * Operator asks the side panel to run an observation.
  *
- * The handshake below closes that window: the worker sends nothing to Z1 until Z1
- * has announced that it is listening.
+ * A separate channel from the toolbar click so the panel can re-run a task without
+ * the operator hunting for the extension icon, and so the panel's lifetime is not
+ * tied to `action.onClicked`.
  */
-export const OFFSCREEN_READY_TIMEOUT_MS = 5_000;
-
-export type InboundMessage = CollectRequest | ObserveRequest | OffscreenReady;
-
-/** Offscreen → service worker. Carries the ENVELOPE, never raw content. */
-export interface ObserveResponse {
-  readonly kind: 'OBSERVE_RESULT';
-  readonly observationId: string;
-  readonly state: string;
-  readonly rung: string;
-  readonly redactions: number;
-  readonly framesVerified: number;
-  readonly transmitted: boolean;
-  readonly reason: string | null;
-  /** Present only when transmission was permitted. Contains no raw values. */
-  readonly envelopeJson: string | null;
-  readonly auditTrail: ReadonlyArray<{
-    readonly destination: string;
-    readonly verdict: string;
-    readonly state: string;
-    readonly redaction_count: number;
-    readonly payload_bytes: number;
-    readonly reason: string;
-  }>;
+export interface RunRequest {
+  readonly kind: 'RUN';
 }
 
-/** Every message must name its kind; an unknown kind is refused, not ignored. */
-export function isInbound(value: unknown): value is InboundMessage {
+export type PanelMessage = ReportView | RunRequest | ReportRequest;
+
+/** The panel asks for the last report so reopening it is not blank. */
+export interface ReportRequest {
+  readonly kind: 'REPORT_REQUEST';
+}
+
+/**
+ * The panel builds `innerHTML` from strings, so the values are inserted as TEXT
+ * nodes and never as markup. A verdict string is operator-facing, but it is still
+ * data, and `textContent` is what makes "it came from our own code" true rather
+ * than merely likely.
+ */
+export function isPanelMessage(value: unknown): value is PanelMessage {
   if (typeof value !== 'object' || value === null) return false;
   const kind = (value as { kind?: unknown }).kind;
-  return (
-    kind === 'COLLECT' || kind === 'OBSERVE' || kind === 'OFFSCREEN_READY'
-  );
+  return kind === 'REPORT' || kind === 'RUN' || kind === 'REPORT_REQUEST';
 }

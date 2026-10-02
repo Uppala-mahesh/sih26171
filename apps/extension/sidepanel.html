@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SIH26171</title>
+    <style>
+      /* Local stylesheet only. No remote font, no CDN, no network - the extension
+         has no network egress and the panel must not introduce one. */
+      :root { color-scheme: light dark; }
+      body {
+        font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0; padding: 12px;
+      }
+      h1 { font-size: 15px; margin: 0 0 2px; }
+      .verdict { border-left: 4px solid #57606a; padding-left: 8px; margin-bottom: 12px; }
+      .verdict.sanitized  { border-color: #1a7f37; }
+      .verdict.degraded   { border-color: #9a6700; }
+      .verdict.uncertain  { border-color: #9a6700; }
+      .verdict.not_instrumented { border-color: #b42318; }
+      .detail { margin: 0; opacity: 0.8; }
+      .facts { display: grid; gap: 2px; }
+      .row { display: flex; justify-content: space-between; gap: 10px; }
+      .label { opacity: 0.7; }
+      .value { text-align: right; font-variant-numeric: tabular-nums; word-break: break-word; }
+      .footer { margin-top: 14px; font-size: 11px; opacity: 0.6; }
+      button { margin-bottom: 10px; padding: 5px 10px; }
+    </style>
+  </head>
+  <body>
+    <button id="run" type="button">Run on this page</button>
+    <div id="report"></div>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

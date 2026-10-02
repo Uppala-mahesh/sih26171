@@ -37,7 +37,7 @@ import { PlaceholderVault } from '../../../packages/privacy/vault.js';
 import { detect } from '../../../packages/privacy/detector.js';
 import { CapabilityResolver } from '../../../packages/vision/capability/ladder.js';
 import { runPipeline, type PageAdapters, type PipelineResult } from '../../../packages/pipeline/orchestrator.js';
-import type { CollectRequest } from './messages.js';
+import { isPanelMessage, type CollectRequest, type ReportView } from './messages.js';
 
 let step = 0;
 function trace(message: string): void {
@@ -241,6 +241,165 @@ async function collectFrom(tabId: number): Promise<CollectRequest | undefined> {
 }
 
 /**
+ * The last report, held for the side panel.
+ *
+ * `chrome.storage.session`, not local: a verdict describes one observation of one
+ * page at one moment. Persisting it would mean tomorrow's panel could show today's
+ * "sanitized" against a page that has since changed — a stale verdict presented as
+ * current is worse than no verdict, so the panel also displays the age and marks
+ * anything past five minutes STALE.
+ *
+ * Holds counts, verdicts and reasons. Never a value.
+ */
+let lastReport: ReportView | null = null;
+
+async function remember(report: ReportView): Promise<void> {
+  lastReport = report;
+  try {
+    await chrome.storage.session.set({ lastReport: report });
+  } catch (error) {
+    // The panel is a convenience; failing to persist must not fail the
+    // observation. Swallowing here keeps the verdict itself intact.
+    console.warn('[sih] could not cache the report:', error);
+  }
+}
+
+async function recallReport(): Promise<ReportView | null> {
+  if (lastReport) return lastReport;
+  try {
+    const stored = await chrome.storage.session.get('lastReport');
+    const value = stored['lastReport'] as ReportView | undefined;
+    lastReport = value ?? null;
+  } catch {
+    lastReport = null;
+  }
+  return lastReport;
+}
+
+/**
+ * Panel channel.
+ *
+ * The panel is an extension page, so `runtime.sendMessage` reaches it. Two
+ * directions, both narrow: the panel may ASK to run, and the worker REPLAYS the
+ * last report. The worker never accepts a report from the panel - a page that could
+ * push a verdict into the UI would make the badge a thing to be spoofed rather
+ * than a thing to be read.
+ */
+chrome.runtime.onMessage.addListener(
+  (message: unknown, sender, sendResponse) => {
+    void (async () => {
+      if (!isPanelMessage(message)) return;
+      const request = message;
+
+      if (request.kind === 'REPORT_REQUEST') {
+        const report = await recallReport();
+        if (report) sendResponse(report);
+        return;
+      }
+
+      if (request.kind === 'RUN') {
+        // The panel cannot run its own observation: it has no DOM and must not
+        // gain one. The worker asks the content script, as always.
+        const tabId = sender.tab?.id;
+        if (tabId === undefined) {
+          await reportFailure('the side panel cannot identify a tab to observe');
+          return;
+        }
+        await runObservation(tabId);
+      }
+    })();
+    // Keep the channel open for the async reply above.
+    return true;
+  },
+);
+
+/**
+ * The single user-initiated entry point.
+ *
+ * The worker asks the CONTENT SCRIPT to collect, and only what the content script
+ * returns ever reaches the pipeline. The worker never reads the page itself, so
+ * it cannot become a second place raw content lives.
+ */
+/**
+ * Observe one tab, end to end.
+ *
+ * Shared by BOTH entry points - the toolbar click and the panel's Run button. Two
+ * copies of this sequence would be two places for the privacy logic to drift, which
+ * is the failure this project has already paid for once.
+ */
+async function runObservation(tabId: number): Promise<void> {
+  try {
+    trace('collecting from the tab');
+    // Cast through `unknown`, never straight to CollectRequest: the shape comes
+    // from a content script this module cannot see, and is checked below.
+    const collected = await collectFrom(tabId);
+    trace(`content script answered: ${collected ? collected.kind : 'nothing'}`);
+
+    if (!collected || collected.kind !== 'COLLECT' || !Array.isArray(collected.segments)) {
+      await reportFailure('the content script returned no collection');
+      return;
+    }
+
+    trace(`collected ${collected.segments.length} text segment(s)`);
+
+    const ladder = await new CapabilityResolver(PROBES).resolve();
+    trace(`capability resolved: ${ladder.active}`);
+
+    const observation = observationId();
+    const vault = new PlaceholderVault(observation);
+    const guard = new EgressGuard();
+
+    const result = runPipeline(
+      buildAdapters(collected, observation, ladder.active),
+      { vault, guard, detect },
+      'summarise the active page',
+    );
+    trace(
+      `pipeline finished: ${result.evidence.state}, ` +
+        `${result.redactionCount} redaction(s), transmitted=${result.transmitted}`,
+    );
+
+    await remember({
+      kind: 'REPORT',
+      observationId: observation,
+      capturedAt: Date.now(),
+      state: result.evidence.state,
+      verdict: result.transmitted ? 'ALLOWED' : 'WITHHELD',
+      rung: result.rung,
+      redactionCount: result.redactionCount,
+      textSegments: result.textSegments,
+      framesVerified: result.framesVerified,
+      visualSurfaces: collected.visualSurfaces,
+      transmitted: result.transmitted,
+      reason: result.pixelFailure ?? result.transmitError,
+      schemaVersion: result.envelope.schemaVersion,
+      destination: result.envelope.destination,
+    });
+
+    // FR-VLT-4: task end revokes resolution. The vault must not outlive the
+    // observation even though nothing else reads it afterwards. Deliberately AFTER
+    // the report is built, so the counts are captured first.
+    vault.clear();
+
+    await announce(result, collected.visualSurfaces);
+  } catch (error) {
+    // Chrome reports every unreachable context with the same sentence, so the only
+    // way to be useful is to name the CAUSES rather than repeat it. In order of
+    // likelihood: a page type no extension may script at all, and a genuinely
+    // broken build.
+    const text = String(error);
+    await reportFailure(
+      /Cannot access|Missing host permission|chrome:\/\//i.test(text)
+        ? 'this page type cannot be scripted (chrome:// pages, the Web Store, ' +
+          'and other extensions\' pages) - open a normal website and try again'
+        : /Receiving end/i.test(text)
+          ? 'no collector in this tab and injection was refused - reload the page (F5)'
+          : `could not observe: ${text}`,
+    );
+  }
+}
+
+/**
  * The single user-initiated entry point.
  *
  * The worker asks the CONTENT SCRIPT to collect, and only what the content script
@@ -252,56 +411,15 @@ chrome.action.onClicked.addListener((tab) => {
   if (tabId === undefined) return;
 
   void (async () => {
+    await runObservation(tabId);
+    // Open the panel from inside the click handler, where the user gesture still
+    // exists - `sidePanel.open()` is refused without one. Opening it separately
+    // would silently do nothing, which is the sort of failure that gets reported
+    // as "the button does nothing".
     try {
-      trace('clicked: collecting from the tab');
-      // Cast through `unknown`, never straight to CollectRequest: the shape comes
-      // from a content script this module cannot see, and is checked below.
-      const collected = await collectFrom(tabId);
-      trace(`content script answered: ${collected ? collected.kind : 'nothing'}`);
-
-      if (!collected || collected.kind !== 'COLLECT' || !Array.isArray(collected.segments)) {
-        await reportFailure('the content script returned no collection');
-        return;
-      }
-
-      trace(`collected ${collected.segments.length} text segment(s)`);
-
-      const ladder = await new CapabilityResolver(PROBES).resolve();
-      trace(`capability resolved: ${ladder.active}`);
-
-      const observation = observationId();
-      const vault = new PlaceholderVault(observation);
-      const guard = new EgressGuard();
-
-      const result = runPipeline(
-        buildAdapters(collected, observation, ladder.active),
-        { vault, guard, detect },
-        'summarise the active page',
-      );
-      trace(
-        `pipeline finished: ${result.evidence.state}, ` +
-          `${result.redactionCount} redaction(s), transmitted=${result.transmitted}`,
-      );
-
-      // FR-VLT-4: task end revokes resolution. The vault must not outlive the
-      // observation even though nothing else reads it afterwards.
-      vault.clear();
-
-      await announce(result, collected.visualSurfaces);
+      await chrome.sidePanel.open({ tabId });
     } catch (error) {
-      // Chrome reports every unreachable context with the same sentence, so the
-      // only way to be useful is to name the CAUSES rather than repeat it. In
-      // order of likelihood: a page type no extension may script at all, and a
-      // genuinely broken build.
-      const text = String(error);
-      await reportFailure(
-        /Cannot access|Missing host permission|chrome:\/\//i.test(text)
-          ? 'this page type cannot be scripted (chrome:// pages, the Web Store, ' +
-            'and other extensions\' pages) - open a normal website and try again'
-          : /Receiving end/i.test(text)
-            ? 'no collector in this tab and injection was refused - reload the page (F5)'
-            : `could not observe: ${text}`,
-      );
+      console.warn('[sih] could not open the side panel:', error);
     }
   })();
 });

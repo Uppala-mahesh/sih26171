@@ -67,14 +67,19 @@ made mechanical.
 | `FR-EXE-1...6` | `DES-SEQ-001` §3 | `packages/agent/executor.ts` + `apps/backend/app/agent/executor.py` | `tests/contract/test_policy_executor.py` (22 cases) · `tests/contract/test_policy_parity.py` (cross-runtime) | Latency 15% |
 | `FR-VER-1...5` | `DES-STATE-001` 3 | `packages/agent/verifier.ts` + `apps/backend/app/agent/verifier.py` | `tests/contract/test_verifier.py` (0.00% false completions, 11 cases) · `tests/contract/test_policy_parity.py` (cross-runtime) | Visual 25% |
 | `FR-CAP-1...9` | `DES-ARCH-001` 6, `DES-STATE-001` | `packages/vision/capability/ladder.ts` | `tests/contract/test_capability_ladder.py`, `benchmarks/resource_latency.py` | **Resources 20%** |
-| `FR-UI-1...8` | `DES-ARCH-001` 8 | `apps/extension/src/content.ts` (collector only); no sidepanel, no console | `tests/contract/test_extension_artifact.py` | - |
+| `FR-UI-1...8` | `DES-ARCH-001` 8, `DES-CLASS-001` §2 | `apps/extension/src/content.ts` (collector only), `apps/extension/src/sidepanel.ts` (report panel); no operator console | `tests/contract/test_extension_artifact.py`, `tests/runtime/worker_harness.mjs` | - |
 | `FR-TEL-1...9` | `REQ-DATA-001` | `benchmarks/` scorecards only; no telemetry module exists | `tests/contract/` scorecard gates | **All weights** |
 | `EI-1...7` | `DES-ARCH-001` 9, `REQ-DATA-001` | `packages/contracts/`, `apps/backend/app/gateway/payload.py` | `tests/contract/test_parity.py`, `test_sanitization_contract.py` | Credibility |
 
-**Every functional requirement group now has an implementing module except the parts of `FR-UI` noted above.** `FR-POL`, `FR-EXE` and `FR-VER` were implemented in TypeScript during the final sprint; their Python ports remain outstanding, so their measured evidence covers one runtime rather than two. `FR-UI` has only the content-script collector - there is no sidepanel and no console.
-`FR-UI`.** They are listed as such rather than mapped to code that does not
-exist. The Rubric column for those groups names the weight they *would* feed, so
-the weight reads as unearned rather than quietly claimed.
+**Every functional requirement group has an implementing module.** `FR-POL`,
+`FR-EXE` and `FR-VER` were TypeScript-only at the end of the original sprint; all
+three are now ported to Python and parity-locked by
+`tests/contract/test_policy_parity.py`, so their evidence covers **both** runtimes
+rather than one. `FR-UI` now has a side panel as well as the collector; it still
+has no operator console, which is noted on its row rather than claimed.
+
+The Rubric column for a group with no producing benchmark names the weight it
+*would* feed, so the weight reads as unearned rather than quietly claimed.
 
 ### 2.1 Rubric coverage check
 
@@ -181,8 +186,7 @@ The baseline is accepted when **all** of the following hold:
 > the build on any divergence in decision, rule, freshness, per-check result or
 > handler invocation.
 >
-> `FR-UI` remains partial: the content-script collector exists, but there is no
-> sidepanel and no console.
+> `FR-UI` has a collector and a side panel; it still has no operator console.
 >
 > Every path in the "Implementing module" column is **checked against the
 > filesystem** by `infra/verify_traceability.py` (21/21 resolve), and every

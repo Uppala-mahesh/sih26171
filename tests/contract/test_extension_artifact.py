@@ -148,28 +148,54 @@ def test_the_offscreen_document_is_gone() -> None:
     )
 
 
+def strip_comments(source: str) -> str:
+    """Remove JS comments so a static scan cannot match its own documentation.
+
+    The egress rule is written down in `messages.ts` - "no fetch, XMLHttpRequest,
+    WebSocket ..." - so a scanner reading raw text finds those identifiers in the
+    comment explaining why they are banned, and fails on its own docstring.
+
+    Same class of defect as a test grepping for a phrase in a comment: the check
+    must look at CODE. A security scan defeatable by documentation is not a scan.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(source)
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+        if ch == "/" and nxt == "*":
+            end = source.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            out.append(" ")
+            continue
+        if ch == "/" and nxt == "/":
+            end = source.find(chr(10), i)
+            i = n if end == -1 else end
+            out.append(" ")
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def test_extension_declares_no_network_egress() -> None:
     """The egress guarantee is a property of the CODE, not of a CSP string.
 
-    This test used to assert `connect-src 'none'` was present. That directive is
-    NOT valid in an MV3 `extension_pages` policy: Chrome rejects such a manifest
-    outright at install time with "Invalid value for
-    'content_security_policy.extension_pages'". Edge accepted the same manifest,
-    so a local run looked perfectly healthy while the extension would not load in
-    Chrome at all.
-
-    The guarantee is therefore asserted where it can actually hold: no network API
-    appears anywhere in the shipped code. That is stronger than the CSP string was
-    - the CSP forbade connections the code never attempted anyway.
+    MV3 does not permit `connect-src` in extension_pages: Chrome rejects such a
+    manifest outright at install time, while Edge accepted the same one. The
+    guarantee is therefore asserted where it can actually hold - no network API in
+    the shipped code - which is stronger, and cannot fail to install.
     """
     banned = ("fetch(", "XMLHttpRequest", "WebSocket", "EventSource", "navigator.sendBeacon", "importScripts")
     offenders = []
     for path in ARTIFACT.rglob("*.js"):
-        source = path.read_text(encoding="utf-8")
+        code = strip_comments(path.read_text(encoding="utf-8"))
         for needle in banned:
-            if needle in source:
+            if needle in code:
                 offenders.append(f"{path.relative_to(ARTIFACT)} references {needle}")
     assert not offenders, f"network egress is reachable in the artifact: {offenders}"
+
 
 
 def test_the_csp_uses_only_directives_mv3_permits() -> None:
@@ -193,6 +219,58 @@ def test_nothing_is_exposed_to_web_pages() -> None:
     """web_accessible_resources must stay empty: no page may script our code."""
     manifest = json.loads((ARTIFACT / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["web_accessible_resources"] == []
+
+
+def test_the_side_panel_ships_and_says_nothing_sensitive() -> None:
+    """FR-UI: the panel is an extension PAGE, so what it can show matters.
+
+    Two failure modes are checked. First, a missing panel file produces an empty
+    panel and no error anywhere that would explain why. Second — and this is the
+    security half — the panel must build its DOM with `textContent`, never
+    `innerHTML`, so a verdict string cannot become markup.
+    """
+    manifest = json.loads((ARTIFACT / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["side_panel"]["default_path"] == "sidepanel/sidepanel.html", (
+        "the side panel is not declared in the manifest"
+    )
+    for rel in ("sidepanel/sidepanel.html", "sidepanel/sidepanel.js", "sidepanel/messages.js"):
+        assert (ARTIFACT / rel).exists(), f"{rel} is absent from the artifact"
+
+    # Scanned with comments stripped. The panel's own docstring says "never
+    # innerHTML", so a raw-text scan fails on the very line documenting the rule -
+    # and a check that punishes its own documentation is a check people learn to
+    # disable.
+    code = strip_comments((ARTIFACT / "sidepanel" / "sidepanel.js").read_text(encoding="utf-8"))
+    assert "innerHTML" not in code, (
+        "the panel assigns innerHTML; every value must be inserted as a text node"
+    )
+    assert "textContent" in code, "the panel does not use textContent at all"
+
+
+def test_the_panel_report_carries_counts_and_never_values() -> None:
+    """The panel's security value is its narrowness.
+
+    `ReportView` is the ONLY type the worker sends to the panel. If a value field
+    ever appears on it, the panel becomes a second place raw data is displayed -
+    next to a UI an attacker may be screenshotting, and holding the placeholder set
+    that a detokenization request needs.
+
+    Asserted against the TypeScript SOURCE, not the built artifact: `ReportView` is
+    a type, and `tsc` erases types, so it is not present in the emitted JS at all.
+    Scanning the artifact for it would either find nothing or, worse, pass for the
+    wrong reason.
+    """
+    source = (
+        ROOT / "apps" / "extension" / "src" / "messages.ts"
+    ).read_text(encoding="utf-8")
+    assert "interface ReportView" in source, "ReportView is gone from the protocol"
+    body = source.split("interface ReportView", 1)[1].split("\n}", 1)[0]
+    forbidden = ("rawValue", "text:", "segments", "content:", "resolved", "value:")
+    for name in forbidden:
+        assert name not in body, (
+            f"ReportView appears to carry a value field ({name}); the panel must "
+            "receive counts and verdicts only"
+        )
 
 
 def test_every_relative_import_resolves_inside_the_artifact() -> None:

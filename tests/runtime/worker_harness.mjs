@@ -34,11 +34,18 @@ if (!existsSync(WORKER)) {
 
 /** A minimal but STRICT chrome mock; anything unexpected throws. */
 function makeChrome(behaviour) {
-  const seen = { badge: [], title: [], messages: [] };
+  const seen = { badge: [], title: [], messages: [], injected: false };
   const clicked = [];
+  const panelListeners = [];
+  const session = {};
   return {
     seen,
     clicked,
+    // Exposed so scenarios can assert on the panel channel and the cached report.
+    // A harness that can only see the badge cannot tell whether the panel is fed
+    // the right thing.
+    panelListeners,
+    session,
     chrome: {
       action: {
         onClicked: { addListener: (fn) => clicked.push(fn) },
@@ -60,6 +67,20 @@ function makeChrome(behaviour) {
           // injection failure would never reach the worker - the harness would
           // then assert against a scenario Chrome would never produce.
           if (behaviour.onInject) await behaviour.onInject();
+        },
+      },
+      runtime: {
+        onMessage: { addListener: (fn) => panelListeners.push(fn) },
+      },
+      storage: {
+        session: {
+          set: async (items) => Object.assign(session, items),
+          get: async (key) => (key in session ? { [key]: session[key] } : {}),
+        },
+      },
+      sidePanel: {
+        open: async (opts) => {
+          seen.panelOpened = opts.tabId;
         },
       },
     },
@@ -243,6 +264,46 @@ const SCENARIOS = [
     },
   },
   {
+    // The panel is an extension PAGE, so anything that would let it become a second
+    // holder of sensitive state is a defect in itself. These assert the panel's
+    // narrowness, which is its whole security value.
+    name: 'the panel receives a report of counts and verdicts only',
+    async collect() {
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/report',
+        title: 'Report',
+        segments: [
+          { elementId: 'n0', text: 'Aadhaar 999999990019', tagName: 'P', ariaLabel: '' },
+        ],
+        frameBlind: false,
+        visualSurfaces: 0,
+      };
+    },
+    expect(seen, ctx) {
+      assert.equal(ctx.panelListeners.length, 1, 'the worker registered no panel listener');
+      const report = ctx.session['lastReport'];
+      assert.ok(report, 'no report was recorded for the panel');
+      assert.equal(report.kind, 'REPORT');
+      assert.equal(report.transmitted, true);
+
+      // THE assertion that matters: the report must not carry any value. A report
+      // containing redacted text would put placeholders on screen next to a UI an
+      // attacker may be screenshotting.
+      const serialised = JSON.stringify(report);
+      for (const secret of ['999999990019', 'Aadhaar']) {
+        assert.ok(
+          !serialised.includes(secret),
+          `the panel report leaked a value into the UI: ${secret}`,
+        );
+      }
+      // It must carry counts and verdicts, or it conveys nothing.
+      assert.equal(report.redactionCount, 1);
+      assert.ok(typeof report.state === 'string' && report.state.length > 0);
+      assert.ok(typeof report.capturedAt === 'number');
+    },
+  },
+  {
     name: 'a malformed payload is refused, not trusted',
     async collect() {
       return { kind: 'COLLECT', url: 'x', title: 'y' }; // no `segments`
@@ -257,7 +318,8 @@ const SCENARIOS = [
 let failures = 0;
 
 for (const scenario of SCENARIOS) {
-  const { chrome, seen, clicked } = makeChrome(scenario);
+  const mock = makeChrome(scenario);
+  const { chrome, seen, clicked } = mock;
   globalThis.chrome = chrome;
   // The worker registers a rejection handler on `self`. Node has no `self` and no
   // ServiceWorkerGlobalScope, so both are provided here. `addEventListener` must
@@ -281,7 +343,7 @@ for (const scenario of SCENARIOS) {
     await new Promise((r) => setTimeout(r, 50)); // let stray promises settle
 
     assert.deepEqual(unhandled, [], `unhandled rejection escaped: ${unhandled}`);
-    scenario.expect(seen);
+    scenario.expect(seen, mock);
     console.log(`  PASS  ${scenario.name}`);
   } catch (error) {
     failures += 1;
