@@ -151,7 +151,7 @@ i.e. by **writing the scenario**, not by reading the code.
 ## 7. Sequence: a single observation
 
 ```
-content script ──COLLECT──▶ service worker ──OBSERVE──▶ Z1 (offscreen)
+content script ──COLLECT──▶ service worker (Z1) ──▶ vault · detector · guard
                                                         │
                           ┌─────────────────────────────┘
                           ▼

@@ -5,7 +5,7 @@
   "description": "Observes the page, redacts sensitive data on-device, and refuses to emit anything it cannot prove is clean.",
   "minimum_chrome_version": "116",
 
-  "permissions": ["offscreen", "storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": ["<all_urls>"],
 
   "background": {

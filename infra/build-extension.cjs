@@ -31,6 +31,16 @@ const tsc = path.join(
 );
 
 console.log('> compiling extension sources (ES modules)');
+
+// Delete the previous artifact FIRST.
+//
+// A partial delete is a security defect in a build that ships a privacy core: if
+// a module is renamed or removed, its stale copy keeps sitting in dist-extension
+// where the import gate can still see it and the file can still be loaded. The
+// offscreen document survived three builds this way, long after its source was
+// deleted, because nothing ever removed it.
+fs.rmSync(OUT, { recursive: true, force: true });
+
 const build = spawnSync(tsc, ['-p', 'tsconfig.extension.json'], {
   cwd: ROOT,
   stdio: 'inherit',
@@ -46,8 +56,8 @@ if (build.status !== 0) {
  * Copy one file, creating the destination directory, and REWRITE its relative
  * specifiers for its new depth.
  *
- * tsc emits `apps/extension/src/offscreen.js` with `../../../packages/...`,
- * which is correct there and catastrophically wrong at `offscreen/offscreen.js`
+ * tsc emits `apps/extension/src/service-worker.js` with `../../../packages/`,
+ * which is correct there and catastrophically wrong at `background/service-worker.js`
  * - it would resolve out of dist-extension and into the TypeScript sources.
  * Leaving that in place produces a build that succeeds and an extension Chrome
  * cannot load, which is worse than a failed build because it looks fine.
@@ -73,29 +83,22 @@ function place(relativeFrom, relativeTo, depthRewrite) {
 }
 
 // tsc emits apps/extension/src/*.js; the manifest wants them at stable paths.
+//
+// The worker carries the depth rewrite because it - not the offscreen document -
+// is what imports the privacy core now.
 place(path.join('apps', 'extension', 'src', 'content.js'), path.join('content', 'content.js'), null);
 place(
   path.join('apps', 'extension', 'src', 'service-worker.js'),
   path.join('background', 'service-worker.js'),
-  null,
-);
-// messages.js is imported by BOTH the worker and the offscreen document, so it
-// has to exist beside each. A worker that imports a module living only in the
-// offscreen directory fails at load, not at test time.
-for (const dir of ['background', 'offscreen']) {
-  place(
-    path.join('apps', 'extension', 'src', 'messages.js'),
-    path.join(dir, 'messages.js'),
-    null,
-  );
-}
-place(
-  path.join('apps', 'extension', 'src', 'offscreen.js'),
-  path.join('offscreen', 'offscreen.js'),
   { from: '../../../packages/', to: '../packages/' },
 );
+place(
+  path.join('apps', 'extension', 'src', 'messages.js'),
+  path.join('background', 'messages.js'),
+  null,
+);
 
-// The privacy core is imported by the offscreen document, so it must ship too.
+// The privacy core is imported by the service worker, so it must ship too.
 const copyTree = (from, to) => {
   fs.mkdirSync(to, { recursive: true });
   for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
@@ -107,15 +110,10 @@ const copyTree = (from, to) => {
 };
 copyTree(path.join(OUT, 'packages'), path.join(OUT, 'packages'));
 
-// The HTML host and the manifest itself are static.
+// The manifest itself is static.
 fs.copyFileSync(
   path.join(ROOT, 'apps', 'extension', 'manifest.json'),
   path.join(OUT, 'manifest.json'),
-);
-fs.mkdirSync(path.join(OUT, 'offscreen'), { recursive: true });
-fs.copyFileSync(
-  path.join(ROOT, 'apps', 'extension', 'offscreen.html'),
-  path.join(OUT, 'offscreen', 'offscreen.html'),
 );
 
 // Remove tsc's intermediate tree: it is a duplicate of files already placed, and
@@ -175,7 +173,9 @@ const manifest = JSON.parse(fs.readFileSync(path.join(OUT, 'manifest.json'), 'ut
 const required = [
   manifest.background.service_worker,
   manifest.content_scripts[0].js[0],
-  'offscreen/offscreen.html',
+  // The worker imports the privacy core, so the core must actually be present.
+  // Its absence produced a build that looked fine and failed at load.
+  'packages/gateway/guard.js',
 ];
 const missing = required.filter((rel) => !fs.existsSync(path.join(OUT, rel)));
 if (missing.length > 0) {

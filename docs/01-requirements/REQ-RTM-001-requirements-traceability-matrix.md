@@ -56,7 +56,7 @@ made mechanical.
 
 | Req group | Design artifact | Implementing module | Verification | Rubric |
 |---|---|---|---|---|
-| `FR-PER-1...7` | `DES-ARCH-001` 5` | `apps/extension/src/offscreen.ts` (DOM capture, frame blindness) | `tests/contract/test_pipeline_end_to_end.py` | Visual 25% |
+| `FR-PER-1...7` | `DES-ARCH-001` 5` | `apps/extension/src/service-worker.ts` (frame blindness declared); pixel capture not yet implemented | `tests/contract/test_pipeline_end_to_end.py` | Visual 25% |
 | `FR-VIS-1...7` | `DES-ARCH-001` 6, `DES-STATE-001` 5` | `packages/vision/classify/role-classifier.ts`, `packages/vision/layout/` | `benchmarks/vision_quality.py`, `tests/contract/test_vision_quality.py` | **Visual 25%** |
 | `FR-PII-1...9` | `REQ-DATA-001`, `DES-ARCH-001` 4 | `apps/backend/app/privacy/detectors.py`, `packages/privacy/detector.ts`, `packages/taxonomy` | `benchmarks/pii_quality.py.py` (per-class P/R) | **PII 20%** |
 | `FR-RED-1...8` | `DES-ARCH-001` 5, `DES-STATE-001` 4 | `apps/backend/app/privacy/pixels.py`, `packages/privacy/pixels.ts` | `benchmarks/redaction_precision.py.py`, `tests/contract/test_pixel_redaction.py` | **Redaction 20%** |

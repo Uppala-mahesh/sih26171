@@ -43,7 +43,13 @@ def test_every_file_the_manifest_names_exists(manifest: dict) -> None:
     targets = [
         manifest["background"]["service_worker"],
         *manifest["content_scripts"][0]["js"],
-        "offscreen/offscreen.html",
+        # The worker statically imports the privacy core, so every module it
+        # reaches must ship. A missing one is a load-blocking 404 that only
+        # appears when Chrome evaluates the worker.
+        "packages/gateway/guard.js",
+        "packages/privacy/vault.js",
+        "packages/privacy/detector.js",
+        "packages/pipeline/orchestrator.js",
     ]
     missing = [t for t in targets if not (ARTIFACT / t).exists()]
     assert not missing, f"manifest names files that are absent: {missing}"
@@ -66,30 +72,70 @@ def test_content_script_is_a_classic_script_with_no_imports() -> None:
     assert "require(" not in source
 
 
-def test_the_service_worker_imports_no_privacy_module() -> None:
-    """DP-2 / SEC-BOUND-001 §3: the coordinator reaches Z1 by message only.
+def test_the_service_worker_is_the_single_privacy_boundary() -> None:
+    """Z1 is the service worker, and it is the ONLY runtime importer of the core.
 
-    Asserted over IMPORT SPECIFIERS, not over the file's text. An earlier
-    version of this test grepped for the word "vault" and failed on the
-    docstring that says the worker holds no vault - a false positive that would
-    have taught everyone to ignore it.
+    This test previously asserted the opposite -- that the worker had zero
+    runtime imports and reached the privacy core by message. That design put the
+    core behind an offscreen document, whose module evaluation races
+    `createDocument()`, and it produced two separate "Receiving end does not
+    exist" failures.
+
+    The invariant that actually protects privacy is UNCHANGED and is what is
+    asserted here: the content script must still import nothing, so page content
+    has exactly one route inward and one owner.
     """
-    source = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
-    specifiers = re.findall(r"""from\s+['"]([^'"]+)['"]|import\(['"]([^'"]+)['"]\)""", source)
-    imported = [s for group in specifiers for s in group if s]
-
-    # ZERO runtime imports, which is stronger than the original
-    # "imports only ./messages.js". The worker's use of the message types is
-    # type-only, so it is erased at compile time and the built file imports
-    # nothing at all. There is therefore no module graph connecting the
-    # coordinator to the privacy core.
-    assert imported == [], (
-        f"the service worker must have no runtime imports, found {imported}"
+    content = (ARTIFACT / "content" / "content.js").read_text(encoding="utf-8")
+    content_specs = [
+        s
+        for group in re.findall(r"""from\s+['"]([^'"]+)['"]|import\(['"]([^'"]+)['"]\)""", content)
+        for s in group
+        if s
+    ]
+    assert content_specs == [], (
+        f"the content script must import nothing; found {content_specs}"
     )
-    for forbidden in ("vault", "detector", "redactor", "sanitizer", "orchestrator", "pixels"):
-        assert not any(forbidden in spec for spec in imported), (
-            f"the service worker imports a Z1 module: {imported}"
-        )
+
+    # And the worker must be the only place the core is reached from.
+    worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    assert "packages/gateway/guard.js" in worker, (
+        "the worker is no longer the privacy boundary; something else is, and "
+        "this test is asserting a stale design"
+    )
+
+
+def test_pixel_blindness_is_declared_not_hidden() -> None:
+    """A worker has no `document`, so it cannot rasterise page pixels.
+
+    The honest behaviour is to hand the pipeline no frames so it derives
+    NOT_INSTRUMENTED and the guard WITHHOLDS. The dishonest behaviour - and the
+    v1 defect - is to pass an empty scan off as verified.
+    """
+    worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    assert "captureFrames: () => []" in worker, (
+        "the worker fabricates frames; a service worker has no document and "
+        "cannot produce pixels"
+    )
+    # The claim must be visible to the operator, not buried in a comment.
+    assert "cannot be inspected" in worker, (
+        "pixel blindness is not disclosed in the user-facing title"
+    )
+
+
+def test_the_offscreen_document_is_gone() -> None:
+    """The offscreen route was removed deliberately, not by accident.
+
+    A half-removed offscreen path is worse than either design: it looks present
+    and still races. Its absence from the artifact is the thing to assert.
+    """
+    assert not (ARTIFACT / "offscreen").exists(), (
+        "an offscreen directory remains in the artifact; the offscreen route was "
+        "removed because its module evaluation races createDocument()"
+    )
+    manifest = json.loads((ARTIFACT / "manifest.json").read_text(encoding="utf-8"))
+    assert "offscreen" not in manifest["permissions"], (
+        "the offscreen permission is still requested but nothing uses it"
+    )
 
 
 def test_extension_declares_no_network_egress() -> None:
@@ -187,40 +233,41 @@ def test_the_worker_does_not_collect_on_page_load() -> None:
     assert "runtime.onMessage" in content
 
 
-def test_runtime_and_tabs_channels_are_not_confused() -> None:
-    """`runtime.sendMessage` reaches extension pages; `tabs` reaches content.
+def test_no_message_is_sent_to_a_context_that_does_not_exist() -> None:
+    """The remaining message hop must be one that provably has a receiver.
 
-    The two are annotated in the source so the distinction survives review.
+    `runtime.sendMessage` from the worker reaches EXTENSION PAGES. With the
+    offscreen document gone there are none, so every such send is a guaranteed
+    "Receiving end does not exist". `tabs.sendMessage` reaches CONTENT SCRIPTS,
+    which do exist and are asserted to have a listener.
     """
     worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
-    # The offscreen document is an extension page, so it needs runtime.*.
-    assert "runtime.sendMessage" in worker, (
-        "the worker must reach the offscreen document via runtime.sendMessage"
+    # Match the CALL, not the words. The file's own documentation explains the
+    # runtime/tabs distinction, so a naive substring check matches the comment
+    # describing the thing it is trying to prove absent. A test that fails on
+    # its own documentation teaches everyone to ignore it.
+    assert "chrome.runtime.sendMessage(" not in worker, (
+        "the worker still messages extension pages, but no extension page "
+        "exists to receive them"
+    )
+    assert "chrome.tabs.sendMessage(" in worker, (
+        "the worker must reach the content script, which is the only remaining "
+        "message target"
     )
 
 
-def test_the_worker_waits_for_z1_to_be_listening() -> None:
-    """The race that produced 'Receiving end does not exist' a second time.
+def test_a_missing_content_script_says_so_plainly() -> None:
+    """The single most likely real failure must be named in the error.
 
-    `chrome.offscreen.createDocument()` resolves when the DOCUMENT exists, not
-    when its module has EVALUATED. The offscreen document registers its message
-    listener as a side effect of that evaluation, so sending immediately races it.
-
-    The worker must therefore wait for an explicit readiness signal, and the
-    offscreen document must send one.
+    A tab open before the extension was installed has no content script, and
+    `tabs.sendMessage` fails with the same generic string as every other routing
+    problem. Telling the operator to reload the page is the difference between a
+    five-second fix and an hour of guessing.
     """
     worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
-    offscreen = (ARTIFACT / "offscreen" / "offscreen.js").read_text(encoding="utf-8")
-
-    assert "OFFSCREEN_READY" in worker, (
-        "the worker has no readiness handshake; it will race the offscreen "
-        "module's listener registration"
+    assert "RELOAD THE PAGE" in worker, (
+        "a missing content script is not reported as the likely cause"
     )
-    assert "OFFSCREEN_READY" in offscreen, (
-        "the offscreen document never announces that it is listening"
-    )
-    # The handshake must be awaited, not merely observed.
-    assert "awaitOffscreenReady" in worker or "await offscreenReady" in worker
 
 
 def test_a_rejected_badge_cannot_mask_the_real_error() -> None:

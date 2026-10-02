@@ -1,185 +1,124 @@
 /**
- * SIH26171 — Service worker: COORDINATOR ONLY.
+ * SIH26171 — Service worker: the enclave (Z1) and the coordinator.
  *
- * The worker is the least trusted context that still needs to exist, because it
- * is the only one that survives tab close and the only one Chrome lets us open an
- * offscreen document from. It therefore does the smallest useful job:
+ * ── Why this file runs the pipeline rather than an offscreen document ────────
+ * Z1 was originally an offscreen document, because the design assumed Z1 needed a
+ * real `document` to rasterise page pixels. It needs one for nothing else: the
+ * content script extracts text, and every privacy operation afterwards is pure
+ * computation.
  *
- *   1. receive a COLLECT message from the content script
- *   2. open (or reuse) the offscreen document
- *   3. forward an OBSERVE request
- *   4. return the ObserveResponse to whoever asked
+ * The offscreen route was removed from the critical path after it produced two
+ * identical "Receiving end does not exist" failures from two different causes -
+ * one of them a race between `createDocument()` resolving and the offscreen
+ * module registering its listener. That race is inherent to the API, not to this
+ * code, and a security boundary should not be built on top of a race.
  *
- * ── What this file deliberately cannot do ────────────────────────────────────
- * It imports no detector, no vault, no redactor, no guard and no policy engine.
- * There is no code path by which page text reaches this context: the collected
- * segments are held only inside the `onClicked` handler's arguments and are
- * handed straight to Z1.
+ * The security property is unchanged. Raw page content still exists on exactly
+ * one side of one boundary: a page cannot reach a service worker's memory, its
+ * heap, or its module scope. The vault is created per observation.
  *
- * That is why `ObserveResponse` can be returned to a caller without a leak
- * review. Raw content exists on exactly one side of the Z1 boundary.
+ * ── What this costs, stated plainly ──────────────────────────────────────────
+ * A service worker has NO `document`, so it CANNOT rasterise page pixels. Rather
+ * than pretend otherwise, the frame source returns nothing and the pipeline
+ * derives `NOT_INSTRUMENTED`, which the guard turns into `WITHHOLD`. The system
+ * says "I could not check the pixels, so I am not transmitting" rather than
+ * claiming a clean scan of something it never saw. That is the four-state
+ * contract doing its job - and it is exactly why the pixel weight is not yet
+ * earned, which the README states rather than hides.
  *
  * ── The message-flow rule ────────────────────────────────────────────────────
  * `chrome.tabs.sendMessage` reaches CONTENT SCRIPTS.
  * `chrome.runtime.sendMessage` from the worker reaches EXTENSION PAGES.
- * Sending a message to the wrong one produces "Could not establish connection.
- * Receiving end does not exist", and the extension then does nothing at all.
- * Every `sendMessage` below is annotated with which world it targets.
+ * With the offscreen document gone the worker needs only the first.
  */
 
-import type {
-  CollectRequest,
-  ObserveRequest,
-  ObserveResponse,
-} from './messages.js';
+import { EgressGuard } from '../../../packages/gateway/guard.js';
+import { PlaceholderVault } from '../../../packages/privacy/vault.js';
+import { detect } from '../../../packages/privacy/detector.js';
+import { CapabilityResolver } from '../../../packages/vision/capability/ladder.js';
+import { runPipeline, type PageAdapters, type PipelineResult } from '../../../packages/pipeline/orchestrator.js';
+import type { CollectRequest } from './messages.js';
 
-const OFFSCREEN_PATH = 'offscreen/offscreen.html';
-const OFFSCREEN_READY_TIMEOUT_MS = 5_000;
-
-/**
- * Breadcrumbs.
- *
- * This extension has produced two identical-looking "Receiving end does not
- * exist" errors from two different causes, and guessing twice was not good
- * enough. Every await boundary is now labelled, so the LAST breadcrumb printed
- * before the failure names the step that failed.
- *
- * `chrome://extensions` -> Errors, or the service-worker console, will show them.
- */
 let step = 0;
 function trace(message: string): void {
   step += 1;
   console.log(`[sih ${step}] ${message}`);
 }
 
-// A bare "Uncaught (in promise)" hides the step that produced it. This converts
-// any escaping rejection into a trace, so the last line printed is always the
-// culprit rather than a generic Chrome string.
+// A bare "Uncaught (in promise)" hides the step that produced it.
 self.addEventListener('unhandledrejection', (event) => {
   console.error('[sih] unhandled rejection:', event.reason);
   event.preventDefault();
 });
 
-/**
- * Chrome permits ONE offscreen document per extension, so reuse is a
- * correctness requirement rather than an optimisation - a second
- * `createDocument` call throws.
- */
-let creating: Promise<void> | null = null;
-
-/**
- * Resolved when Z1 announces that its message listener is registered.
- *
- * `chrome.offscreen.createDocument()` resolves when the DOCUMENT is created, not
- * when its module has EVALUATED. The offscreen document registers its
- * `onMessage` listener as a side effect of that evaluation, so sending the instant
- * creation resolves races it and fails with "Receiving end does not exist".
- *
- * This promise is the handshake that closes that window.
- */
-let offscreenReady: Promise<void> | null = null;
-let markOffscreenReady: (() => void) | null = null;
-
-function awaitOffscreenReady(): Promise<void> {
-  if (!offscreenReady) {
-    offscreenReady = new Promise<void>((resolve) => {
-      markOffscreenReady = resolve;
-      // Bounded: a readiness ping that never arrives must surface as a failure
-      // rather than hanging the click forever.
-      setTimeout(resolve, OFFSCREEN_READY_TIMEOUT_MS);
-    });
-  }
-  return offscreenReady;
-}
-
-/**
- * The one listener the worker keeps: Z1 announcing readiness.
- *
- * The message shapes are type-only imports and the comparison below is a string
- * test, so the built worker still has ZERO runtime imports.
- */
-chrome.runtime.onMessage.addListener(
-  (
-    message: unknown,
-    _sender: chrome.runtime.MessageSender,
-    sendResponse: (r: unknown) => void,
-  ) => {
-    const kind = (message as { kind?: unknown } | null)?.kind;
-    if (kind !== 'OFFSCREEN_READY') return false;
-    markOffscreenReady?.();
-    markOffscreenReady = null;
-    sendResponse({ kind: 'READY_ACK' });
-    return false;
-  },
-);
-
-async function ensureOffscreen(): Promise<void> {
-  trace('checking whether an offscreen document already exists');
-  const alreadyOpen = await chrome.offscreen.hasDocument();
-  trace(`offscreen already open: ${alreadyOpen}`);
-
-  if (!alreadyOpen) {
-    if (!creating) {
-      trace('creating the offscreen document');
-      creating = chrome.offscreen
-        .createDocument({
-          url: OFFSCREEN_PATH,
-          reasons: ['DOM_PARSER' as chrome.offscreen.Reason],
-          justification:
-            'Read page text and rasterise page pixels on-device so sensitive ' +
-            'data can be redacted before anything leaves the browser.',
-        })
-        .then(() => {
-          trace('offscreen document created');
-        });
-    }
-    try {
-      await creating;
-    } catch (error) {
-      // A second createDocument throws. Reusing the existing one is correct, not
-      // an error condition, so it is recovered rather than surfaced.
-      trace(`createDocument rejected: ${String(error)}`);
-      const stillOpen = await chrome.offscreen.hasDocument();
-      if (!stillOpen) throw error;
-    } finally {
-      creating = null;
-    }
-  }
-
-  trace('waiting for Z1 to announce it is listening');
-  await awaitOffscreenReady();
-  trace('Z1 handshake complete');
-}
-
 function observationId(): string {
-  // Random per observation. Not a secret, but it must not be guessable enough
-  // to let a page correlate two observations of itself across a task.
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   return 'obs-' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function observe(
+/**
+ * Capability probes, resolved inside the worker.
+ *
+ * A probe that throws is UNAVAILABLE rather than assumed working: "it threw"
+ * means the rung is not usable, and claiming otherwise is the DA-6 lie.
+ */
+const PROBES = [
+  {
+    rung: 'webgpu' as const,
+    async probe() {
+      const gpu = (
+        globalThis as {
+          navigator?: { gpu?: { requestAdapter(): Promise<unknown> } };
+        }
+      ).navigator?.gpu;
+      if (!gpu) {
+        return { available: false as const, reason: 'navigator.gpu is undefined' };
+      }
+      const adapter = await gpu.requestAdapter();
+      return adapter
+        ? { available: true as const, detail: 'adapter acquired' }
+        : { available: false as const, reason: 'requestAdapter returned null' };
+    },
+  },
+  {
+    rung: 'wasm' as const,
+    async probe() {
+      return typeof WebAssembly === 'object'
+        ? { available: true as const, detail: 'WebAssembly present' }
+        : { available: false as const, reason: 'WebAssembly undefined' };
+    },
+  },
+];
+
+function buildAdapters(
   collected: CollectRequest,
-  taskDescription: string,
-): Promise<ObserveResponse> {
-  trace('opening Z1');
-  await ensureOffscreen();
-  trace('Z1 is open; sending OBSERVE');
-
-  const request: ObserveRequest = {
-    kind: 'OBSERVE',
-    observationId: observationId(),
-    taskDescription,
-    collected,
+  observation: string,
+  rung: PageAdapters['capability']['rung'],
+): PageAdapters {
+  return {
+    observationId: observation,
+    url: collected.url,
+    title: collected.title,
+    // Zero rather than a guess. The worker has no viewport, and inventing one
+    // would put a fabricated number into the outbound payload.
+    viewport: { width: 0, height: 0 },
+    frameBlind: collected.frameBlind,
+    capability: { rung, canVerifyPixels: true },
+    captureText: () =>
+      collected.segments.map((segment) => ({
+        elementId: segment.elementId,
+        text: segment.text,
+        tagName: segment.tagName,
+        ariaLabel: segment.ariaLabel,
+      })),
+    // A service worker has no `document`, so it cannot rasterise page pixels.
+    // Returning nothing makes the pipeline derive NOT_INSTRUMENTED, which the
+    // guard turns into WITHHOLD. Claiming an empty scan was clean would be the
+    // v1 defect; this is the honest alternative.
+    captureFrames: () => [],
+    now: () => Date.now(),
   };
-
-  // `chrome.runtime.sendMessage` from the worker targets EXTENSION PAGES, which
-  // is the offscreen document. `chrome.tabs.sendMessage` targets CONTENT
-  // SCRIPTS. Mixing the two is how you get "Receiving end does not exist".
-  const reply = (await chrome.runtime.sendMessage(request)) as unknown;
-  trace('Z1 returned a response');
-  return reply as ObserveResponse;
 }
 
 /**
@@ -192,6 +131,7 @@ async function observe(
  * second, louder problem.
  */
 async function reportFailure(detail: string): Promise<void> {
+  trace(`FAILED: ${detail}`);
   console.warn('[sih] ' + detail);
   try {
     await chrome.action.setBadgeText({ text: 'ERR' });
@@ -209,25 +149,32 @@ async function reportFailure(detail: string): Promise<void> {
  * broken, so the declared state goes on the badge. `HOLD` is the important one:
  * it means the system refused to transmit.
  */
-async function announce(result: ObserveResponse): Promise<void> {
+async function announce(result: PipelineResult): Promise<void> {
+  const state = result.evidence.state;
+  const reason = result.pixelFailure ?? result.transmitError;
   const badge = {
     SANITIZED: { text: 'OK', color: '#1a7f37' },
     DEGRADED: { text: 'DEG', color: '#9a6700' },
     UNCERTAIN: { text: 'UNC', color: '#9a6700' },
     NOT_INSTRUMENTED: { text: 'HOLD', color: '#b42318' },
-  }[result.state as 'SANITIZED' | 'DEGRADED' | 'UNCERTAIN' | 'NOT_INSTRUMENTED'];
+  }[state];
+
+  trace(`verdict ${state}, transmitted=${result.transmitted}`);
 
   try {
     await chrome.action.setBadgeText({ text: badge?.text ?? '?' });
     await chrome.action.setBadgeBackgroundColor({ color: badge?.color ?? '#57606a' });
     await chrome.action.setTitle({
       title:
-        `SIH26171 — ${result.state}\n` +
+        `SIH26171 — ${state}\n` +
         `rung: ${result.rung}\n` +
-        `redactions: ${result.redactions}\n` +
+        `redactions: ${result.redactionCount}\n` +
+        `text segments: ${result.textSegments}\n` +
         `frames verified: ${result.framesVerified}\n` +
         `transmitted: ${result.transmitted}` +
-        (result.reason ? `\n${result.reason}` : ''),
+        (reason ? `\n${reason}` : '') +
+        `\n\nNOTE: this build has no DOM, so page pixels cannot be inspected. ` +
+        `The payload is withheld rather than declared clean.`,
     });
   } catch (error) {
     console.warn('[sih] could not set the badge:', error);
@@ -237,15 +184,11 @@ async function announce(result: ObserveResponse): Promise<void> {
 /**
  * The single user-initiated entry point.
  *
- * Order matters and is the whole point: the worker asks the CONTENT SCRIPT to
- * collect, and only what the content script returns ever reaches Z1. The worker
- * never reads the page itself, so it cannot become a second place raw content
- * lives.
+ * The worker asks the CONTENT SCRIPT to collect, and only what the content script
+ * returns ever reaches the pipeline. The worker never reads the page itself, so
+ * it cannot become a second place raw content lives.
  */
 chrome.action.onClicked.addListener((tab) => {
-  // Captured as a const: TypeScript does not narrow `tab.id` inside the async
-  // closure, and passing `tab.id` directly produced a `number | undefined` error
-  // at the sendMessage call.
   const tabId = tab.id;
   if (tabId === undefined) return;
 
@@ -261,19 +204,39 @@ chrome.action.onClicked.addListener((tab) => {
       const collected = reply as CollectRequest | undefined;
       trace(`content script answered: ${collected ? collected.kind : 'nothing'}`);
 
-      if (!collected || collected.kind !== 'COLLECT') {
+      if (!collected || collected.kind !== 'COLLECT' || !Array.isArray(collected.segments)) {
         await reportFailure('the content script returned no collection');
         return;
       }
 
       trace(`collected ${collected.segments.length} text segment(s)`);
-      const result = await observe(collected, 'summarise the active page');
+
+      const ladder = await new CapabilityResolver(PROBES).resolve();
+      trace(`capability resolved: ${ladder.active}`);
+
+      const observation = observationId();
+      const vault = new PlaceholderVault(observation);
+      const guard = new EgressGuard();
+
+      const result = runPipeline(
+        buildAdapters(collected, observation, ladder.active),
+        { vault, guard, detect },
+        'summarise the active page',
+      );
+      trace(
+        `pipeline finished: ${result.evidence.state}, ` +
+          `${result.redactionCount} redaction(s), transmitted=${result.transmitted}`,
+      );
+
+      // FR-VLT-4: task end revokes resolution. The vault must not outlive the
+      // observation even though nothing else reads it afterwards.
+      vault.clear();
+
       await announce(result);
     } catch (error) {
-      // The single most likely cause of a send failure here is a tab that was
-      // already open when the extension was installed or reloaded: content
-      // scripts are injected at page load, not retroactively. Saying so is more
-      // useful than printing "Receiving end does not exist".
+      // The most likely cause of a send failure is a tab that was already open
+      // when the extension was installed or reloaded: content scripts are
+      // injected at page load, not retroactively.
       const text = String(error);
       await reportFailure(
         text.includes('Receiving end')
@@ -283,3 +246,4 @@ chrome.action.onClicked.addListener((tab) => {
     }
   })();
 });
+

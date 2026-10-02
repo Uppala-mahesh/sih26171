@@ -159,20 +159,44 @@ Both exit non-zero if a target is missed, so they work as CI gates.
 ## 8. Where the privacy boundary actually is
 
 ```
-page DOM ──content script──▶ service worker ──▶ OFFSCREEN DOCUMENT (Z1)
- (untrusted)  collector only    coordinator      DOM + pixels + vault + guard
+page DOM ──content script──▶ SERVICE WORKER (Z1)
+ (untrusted)  collector only     DOM-free · pixels unavailable · vault + guard + core
 ```
 
 | Context | Can reach | Cannot reach |
 |---|---|---|
 | **Content script** | page text | vault, detector, guard — no imports at all |
-| **Service worker** | Z1 by message only | any privacy module; imports only `./messages.js` |
-| **Offscreen (Z1)** | everything | nothing leaves raw |
+| **Service worker (Z1)** | everything | the page DOM, and therefore page pixels |
 
 Raw page content exists on exactly **one** side of the Z1 boundary. That is what
 makes "no outbound payload can hold raw content" a structural property rather
 than a review promise — and it is asserted by
 `tests/contract/test_extension_artifact.py`, not merely documented.
+
+### Why Z1 is the service worker and not an offscreen document
+
+Originally Z1 was an offscreen document, on the assumption that pixel capture
+requires a real `document`. It does — but nothing else does: the content script
+extracts text, and every privacy operation after that is pure computation.
+
+The offscreen route was **removed from the critical path** after it produced two
+identical `Could not establish connection` failures from two different causes.
+One was a race inherent to the API: `createDocument()` resolves when the document
+*exists*, not when its module has *evaluated*, so any send afterwards can beat
+the listener registration. **A security boundary should not be built on top of a
+race.**
+
+### What this costs, stated plainly
+
+A service worker has no `document`, so it **cannot rasterise page pixels**. This
+build therefore supplies no frames, the pipeline derives `NOT_INSTRUMENTED`, and
+the guard returns **`WITHHOLD`**. The badge says `HOLD`, and the tooltip says why.
+
+This is the four-state contract doing its job rather than a workaround: the
+system reports "I could not check the pixels, so I am not transmitting" instead
+of claiming a clean scan of something it never saw. It is also **why the 25%
+visual weight is not yet earned** — pixel capture is genuinely unbuilt, and the
+pixel benchmarks measure the core algorithms, not a Chrome integration.
 
 ## 9. Measured results
 
