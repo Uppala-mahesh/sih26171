@@ -368,7 +368,7 @@ Charter gate **C-1** forbids claiming what has not been measured. This section s
 | **V-12** utility preservation ≥ 0.95 | Pixels outside masks must be **byte-identical** | ✅ built + tested |
 | **FR-RED-2** opaque only | `MaskStyle` enum has exactly one member | ✅ built + tested |
 | **V-3** cross-origin frames | Declared, not solved | ⬜ structural (residual `R-1`) |
-| **V-5** WebGPU→WASM ladder | Capability resolver | ⬜ **not built** |
+| **V-5** WebGPU→WASM ladder | `CapabilityResolver` with injected probes | ✅ built + **mutation-verified** |
 
 ### 13.1 Mutation verification — the control that matters most
 
@@ -412,10 +412,33 @@ value *and* is not the fill colour. That is now what both the verifier and the t
 > the requirement was unmet, and no amount of reading the code would have revealed it. The
 > mutation did, in one run.
 
-### 13.4 The remaining honest gap
+### 13.4 The capability ladder — the last honesty gap, now closed
 
-`V-5` — the WebGPU → WASM SIMD → WASM → DOM-only capability ladder — is not built. Until it
-exists there is no mechanism that reports *which* rung is active, so the system cannot yet
-declare degradation truthfully for the vision path, which is where degradation actually happens.
+`V-5` was the one remaining gap: with no ladder, the system could not report which inference
+rung it was running on, and therefore could not declare vision-path degradation truthfully.
+Degradation only ever happens on the vision path, so this was the final piece of the honesty story.
 
-Cross-origin frames remain structurally unreadable (`R-1`); that is declared, not solved.
+**Built:** `CapabilityResolver` (WebGPU → WASM SIMD → WASM → DOM-only).
+
+Two design decisions worth stating:
+
+1. **Probes are injected, not probed internally.** `navigator.gpu` requires a browser, so a
+   self-probing ladder could only be tested in a browser — and would therefore be untested in CI.
+   Inverting the dependency makes every branch, including *total unavailability*, reachable from a
+   unit test. Nine scenarios run in CI, including "every probe throws".
+
+2. **Absence is never assumed away.** A rung with **no registered probe** is unavailable. The
+   mutation test injects exactly the tempting shortcut — defaulting an unprobed rung to available —
+   and `test_no_registered_probe_means_unavailable` fails. A host is never told a capability
+   exists on the system's behalf.
+
+A probe that **throws** is also treated as unavailable, because `requestAdapter()` rejects on
+hosts without WebGPU. Left unhandled, that rejection would take down the vision path instead of
+stepping it down the ladder — the opposite of what `FR-CAP-1` requires.
+
+**Over-degradation is guarded too.** `test_a_rung_available_at_the_top_is_not_degraded` asserts
+that a working top rung reports `FULL_CAPABILITY`. Declaring `DEGRADED` when capability is intact
+would waste the 25% visual weight, so the ladder must be honest in both directions.
+
+Cross-origin frames remain structurally unreadable (`R-1`); that is declared, not solved, and no
+amount of engineering within this system changes it.
