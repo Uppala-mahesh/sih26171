@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "note": "Cross-runtime parity corpus for the vault and sanitizer. The nonce is FIXED so token strings are comparable across runtimes; in production it is a random per-observation value, which is what makes tokens unforgeable. B-6 refusal behaviour is part of every case because a divergence there is a security divergence, not a cosmetic one.",
+  "observation_id": "obs-parity",
+  "nonce": "deadbeef",
+  "cases": [
+    {
+      "name": "single-email",
+      "element_id": "node-email",
+      "text": "Contact parker.sterling@example.test for details."
+    },
+    {
+      "name": "empty",
+      "element_id": "node-empty",
+      "text": ""
+    },
+    {
+      "name": "no-sensitive-data",
+      "element_id": "node-clean",
+      "text": "Your order shipped yesterday. Reference 7f3a2b1c."
+    },
+    {
+      "name": "repeated-value-shares-one-token",
+      "element_id": "node-repeat",
+      "text": "Aadhaar 999999990019 and again 999999990019 on the same record."
+    },
+    {
+      "name": "two-distinct-entities",
+      "element_id": "node-two",
+      "text": "Email parker.sterling@example.test or call +91 9876543210 today."
+    },
+    {
+      "name": "b6-attempted-cross-element",
+      "element_id": "node-source",
+      "text": "Your Aadhaar is 999999990019 on record."
+    }
+  ]
+}
