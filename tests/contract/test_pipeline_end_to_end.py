@@ -45,6 +45,26 @@ def scenarios() -> dict[str, dict]:
     return {case["name"]: case for case in raw}
 
 
+MATRIX_RUNNER = ROOT / "tests" / "vision" / "run-evidence-matrix.cjs"
+
+
+@pytest.fixture(scope="module")
+def matrix() -> dict:
+    """The full evidence cross product, produced by the real orchestrator."""
+    if not ORCHESTRATOR_JS.exists():
+        pytest.fail(f"{ORCHESTRATOR_JS} is missing. Run: npm run build:parity")
+    completed = subprocess.run(
+        ["node", str(MATRIX_RUNNER)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        pytest.fail(f"evidence matrix runner failed:\n{completed.stderr}")
+    return json.loads(completed.stdout)
+
+
 # -- the load-bearing assertions ----------------------------------------------
 
 
@@ -98,6 +118,81 @@ def test_the_visual_surface_decision_table(scenarios: dict[str, dict]) -> None:
         assert case["transmitted"] is transmitted, (
             f"{name}: transmitted={case['transmitted']}, expected {transmitted}"
         )
+
+
+def test_every_cell_of_the_evidence_matrix_is_correct(matrix: dict) -> None:
+    """The FULL cross product, asserted cell by cell.
+
+    Every branch had a test; the COMBINATION that mattered had none. That is how an
+    uncertain detection shipped as SANITIZED through 337 green tests. Enumerating
+    the whole space means a combination nobody thought of cannot be the one that
+    breaks.
+
+    The table is stated in full rather than sampled. A sampled matrix is a matrix
+    with untested holes, which is the thing this replaces.
+    """
+    # (canVerifyPixels, visualSurfaces) -> state, keyed by detection kind.
+    expected = {
+        # Pixels cannot be verified at all: nothing else matters, so this is
+        # checked first and every detection behaves identically.
+        (False, 0): {"none": "NOT_INSTRUMENTED", "accepted": "NOT_INSTRUMENTED", "uncertain": "NOT_INSTRUMENTED"},
+        (False, 4): {"none": "NOT_INSTRUMENTED", "accepted": "NOT_INSTRUMENTED", "uncertain": "NOT_INSTRUMENTED"},
+        (False, None): {"none": "NOT_INSTRUMENTED", "accepted": "NOT_INSTRUMENTED", "uncertain": "NOT_INSTRUMENTED"},
+        # Verifiable, and NOTHING is painted: coverage is complete.
+        (True, 0): {"none": "SANITIZED", "accepted": "SANITIZED", "uncertain": "UNCERTAIN"},
+        # Verifiable, but painted content exists: partial, and declared.
+        (True, 4): {"none": "DEGRADED", "accepted": "DEGRADED", "uncertain": "UNCERTAIN"},
+        # Verifiable, but the surface count is UNKNOWN: fail closed, never zero.
+        (True, None): {"none": "NOT_INSTRUMENTED", "accepted": "NOT_INSTRUMENTED", "uncertain": "UNCERTAIN"},
+    }
+
+    assert matrix["cells"], "the matrix runner produced no cells"
+    for cell in matrix["cells"]:
+        key = (cell["canVerifyPixels"], cell["visualSurfaces"])
+        want = expected[key][cell["detection"]]
+        label = (
+            f"canVerifyPixels={cell['canVerifyPixels']} "
+            f"surfaces={cell['visualSurfaces']} "
+            f"detection={cell['detection']} rung={cell['rung']}"
+        )
+        assert cell["state"] == want, f"{label}: expected {want}, got {cell['state']}"
+        # A WITHHELD verdict must never accompany a transmitted payload.
+        assert cell["transmitted"] == (want != "NOT_INSTRUMENTED"), (
+            f"{label}: transmitted={cell['transmitted']} contradicts state {want}"
+        )
+
+
+def test_the_matrix_covers_the_whole_space(matrix: dict) -> None:
+    """A completeness check on the check itself.
+
+    2 capability flags x 3 surface states x 3 detections x 2 rungs = 36 cells. If
+    the runner silently skips a combination, every per-cell assertion above still
+    passes - so the count is asserted too.
+    """
+    keys = {
+        (
+            c["canVerifyPixels"],
+            c["visualSurfaces"],
+            c["detection"],
+            c["rung"],
+        )
+        for c in matrix["cells"]
+    }
+    assert len(keys) == 36, f"expected 36 distinct cells, got {len(keys)}"
+
+
+def test_every_declared_state_is_actually_reachable(matrix: dict) -> None:
+    """A state no cell produces is a state nobody has verified.
+
+    Dead branches are how a rule gets "fixed" in the wrong place, and how a state
+    documented in DES-CLASS-001 quietly stops describing reality.
+    """
+    produced = {c["state"] for c in matrix["cells"]}
+    # NOT_INSTRUMENTED, SANITIZED, DEGRADED, UNCERTAIN. All four must occur, or one
+    # is unreachable and its branch is untested in practice.
+    assert produced == {"NOT_INSTRUMENTED", "SANITIZED", "DEGRADED", "UNCERTAIN"}, (
+        f"the matrix produced {sorted(produced)}"
+    )
 
 
 def test_no_raw_value_reaches_the_envelope(scenarios: dict[str, dict]) -> None:
