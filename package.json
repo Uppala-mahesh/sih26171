@@ -11,7 +11,8 @@
     "check:taxonomy": "python infra/generate_taxonomy.py --check",
     "build:parity": "node infra/build-parity.cjs",
     "build:extension": "node infra/build-extension.cjs",
-    "verify": "npm run typecheck && npm run check:taxonomy && npm run build:parity && npm run build:extension"
+    "test:worker": "node tests/runtime/worker_harness.mjs",
+    "verify": "npm run typecheck && npm run check:taxonomy && npm run build:parity && npm run build:extension && npm run test:worker"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
