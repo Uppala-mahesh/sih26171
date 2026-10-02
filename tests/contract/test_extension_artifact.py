@@ -78,8 +78,13 @@ def test_the_service_worker_imports_no_privacy_module() -> None:
     specifiers = re.findall(r"""from\s+['"]([^'"]+)['"]|import\(['"]([^'"]+)['"]\)""", source)
     imported = [s for group in specifiers for s in group if s]
 
-    assert imported == ["./messages.js"], (
-        f"the service worker must import only its message protocol, found {imported}"
+    # ZERO runtime imports, which is stronger than the original
+    # "imports only ./messages.js". The worker's use of the message types is
+    # type-only, so it is erased at compile time and the built file imports
+    # nothing at all. There is therefore no module graph connecting the
+    # coordinator to the privacy core.
+    assert imported == [], (
+        f"the service worker must have no runtime imports, found {imported}"
     )
     for forbidden in ("vault", "detector", "redactor", "sanitizer", "orchestrator", "pixels"):
         assert not any(forbidden in spec for spec in imported), (
@@ -142,3 +147,53 @@ def test_only_one_copy_of_the_privacy_core_is_packaged() -> None:
     """Two copies invite loading the wrong one."""
     stray = list(ARTIFACT.glob("apps/**/*.js"))
     assert not stray, f"tsc's intermediate tree was not removed: {stray}"
+
+
+# -- message routing, which only fails at runtime ─────────────────────────────
+
+
+def test_the_worker_asks_the_content_script_to_collect() -> None:
+    """The bug that made the extension do nothing on first load.
+
+    `chrome.action.onClicked` called `chrome.tabs.sendMessage`, which reaches
+    CONTENT SCRIPTS - and the content script had no listener. Chrome threw
+    "Could not establish connection. Receiving end does not exist" and the
+    extension silently did nothing.
+
+    Two halves: the worker must ASK, and the content script must ANSWER.
+    """
+    worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    content = (ARTIFACT / "content" / "content.js").read_text(encoding="utf-8")
+
+    assert "tabs.sendMessage" in worker, (
+        "the worker never asks the content script to collect; clicking the "
+        "toolbar cannot reach page content"
+    )
+    assert "onMessage" in content, (
+        "the content script has no message listener, so the worker's request "
+        "has no receiving end"
+    )
+    # And the message it asks for must be the one the script handles.
+    assert "COLLECT" in worker and "COLLECT" in content
+
+
+def test_the_worker_does_not_collect_on_page_load() -> None:
+    """FR-AGT-7: a content script that reads every visited page is the opposite
+    of a privacy tool. Collection must begin only on an explicit user action."""
+    content = (ARTIFACT / "content" / "content.js").read_text(encoding="utf-8")
+    assert "onMessage" in content
+    # The collection must be inside the listener, not at top level. A top-level
+    # sendMessage on load is the defect this replaced.
+    assert "runtime.onMessage" in content
+
+
+def test_runtime_and_tabs_channels_are_not_confused() -> None:
+    """`runtime.sendMessage` reaches extension pages; `tabs` reaches content.
+
+    The two are annotated in the source so the distinction survives review.
+    """
+    worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    # The offscreen document is an extension page, so it needs runtime.*.
+    assert "runtime.sendMessage" in worker, (
+        "the worker must reach the offscreen document via runtime.sendMessage"
+    )

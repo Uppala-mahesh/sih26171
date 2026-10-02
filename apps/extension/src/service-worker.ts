@@ -11,15 +11,27 @@
  *   4. return the ObserveResponse to whoever asked
  *
  * ── What this file deliberately cannot do ────────────────────────────────────
- * It imports no detector, no vault, no redactor and no guard. There is no code
- * path by which page text reaches this context: the collected segments are held
- * only inside the `observe()` call's arguments and are handed straight to Z1.
+ * It imports no detector, no vault, no redactor, no guard and no policy engine.
+ * There is no code path by which page text reaches this context: the collected
+ * segments are held only inside the `onClicked` handler's arguments and are
+ * handed straight to Z1.
  *
  * That is why `ObserveResponse` can be returned to a caller without a leak
- * review. Raw content exists on exactly one side of this boundary.
+ * review. Raw content exists on exactly one side of the Z1 boundary.
+ *
+ * ── The message-flow rule ────────────────────────────────────────────────────
+ * `chrome.tabs.sendMessage` reaches CONTENT SCRIPTS.
+ * `chrome.runtime.sendMessage` from the worker reaches EXTENSION PAGES.
+ * Sending a message to the wrong one produces "Could not establish connection.
+ * Receiving end does not exist", and the extension then does nothing at all.
+ * Every `sendMessage` below is annotated with which world it targets.
  */
 
-import { isInbound, type CollectRequest, type ObserveRequest, type ObserveResponse } from './messages.js';
+import type {
+  CollectRequest,
+  ObserveRequest,
+  ObserveResponse,
+} from './messages.js';
 
 const OFFSCREEN_PATH = 'offscreen/offscreen.html';
 
@@ -73,38 +85,81 @@ async function observe(
     collected,
   };
 
+  // `chrome.runtime.sendMessage` from the worker targets EXTENSION PAGES, which
+  // is the offscreen document. `chrome.tabs.sendMessage` targets CONTENT
+  // SCRIPTS. Mixing the two is how you get "Receiving end does not exist".
   return (await chrome.runtime.sendMessage(request)) as ObserveResponse;
 }
 
-chrome.runtime.onMessage.addListener(
-  (
-    message: unknown,
-    sender: chrome.runtime.MessageSender,
-    sendResponse: (r: ObserveResponse | { kind: 'COLLECTED' }) => void,
-  ) => {
-    if (!isInbound(message) || message.kind !== 'COLLECT') return false;
+/**
+ * Surface the verdict where the operator can see it without opening devtools.
+ *
+ * A privacy tool that silently succeeds is indistinguishable from one that is
+ * broken, so the declared state goes on the badge. `HOLD` is the important one:
+ * it means the system refused to transmit.
+ */
+async function announce(result: ObserveResponse): Promise<void> {
+  const badge = {
+    SANITIZED: { text: 'OK', color: '#1a7f37' },
+    DEGRADED: { text: 'DEG', color: '#9a6700' },
+    UNCERTAIN: { text: 'UNC', color: '#9a6700' },
+    NOT_INSTRUMENTED: { text: 'HOLD', color: '#b42318' },
+  }[result.state as 'SANITIZED' | 'DEGRADED' | 'UNCERTAIN' | 'NOT_INSTRUMENTED'];
 
-    void (async () => {
-      const collected = message as CollectRequest;
+  await chrome.action.setBadgeText({ text: badge?.text ?? '?' });
+  await chrome.action.setBadgeBackgroundColor({ color: badge?.color ?? '#57606a' });
+  await chrome.action.setTitle({
+    title:
+      `SIH26171 — ${result.state}\n` +
+      `rung: ${result.rung}\n` +
+      `redactions: ${result.redactions}\n` +
+      `frames verified: ${result.framesVerified}\n` +
+      `transmitted: ${result.transmitted}` +
+      (result.reason ? `\n${result.reason}` : ''),
+  });
+}
 
-      // FR-AGT-7: a collection from a page the user did not ask about is not
-      // actioned. The trigger comes from the popup/action path, never from the
-      // page, so an unsolicited COLLECT only records that it happened.
-      if (!sender.tab?.active) {
-        sendResponse({ kind: 'COLLECTED' });
+/**
+ * The single user-initiated entry point.
+ *
+ * Order matters and is the whole point: the worker asks the CONTENT SCRIPT to
+ * collect, and only what the content script returns ever reaches Z1. The worker
+ * never reads the page itself, so it cannot become a second place raw content
+ * lives.
+ */
+chrome.action.onClicked.addListener((tab) => {
+  // Captured as a const: TypeScript does not narrow `tab.id` inside the async
+  // closure, and passing `tab.id` directly produced a `number | undefined` error
+  // at the sendMessage call.
+  const tabId = tab.id;
+  if (tabId === undefined) return;
+
+  void (async () => {
+    try {
+      // Typed `void` by @types/chrome, because the response comes from a content
+      // script this module cannot see. Cast through `unknown`, never straight to
+      // CollectRequest: the shape is checked immediately below.
+      const reply = (await chrome.tabs.sendMessage(tabId, {
+        kind: 'COLLECT',
+      })) as unknown;
+      const collected = reply as CollectRequest | undefined;
+
+      if (!collected || collected.kind !== 'COLLECT') {
+        await chrome.action.setBadgeText({ text: 'ERR' });
+        await chrome.action.setBadgeBackgroundColor({ color: '#b42318' });
         return;
       }
 
       const result = await observe(collected, 'summarise the active page');
-      sendResponse(result);
-    })();
-
-    return true;
-  },
-);
-
-/** Entry point for the extension action. */
-chrome.action.onClicked.addListener((tab) => {
-  if (!tab.id) return;
-  chrome.tabs.sendMessage(tab.id, { kind: 'OBSERVE', observationId: observationId() } as never);
+      await announce(result);
+    } catch (error) {
+      // A failed collection is reported as a failure. Claiming otherwise is the
+      // behaviour this whole project exists to eliminate.
+      await chrome.action.setBadgeText({ text: 'ERR' });
+      await chrome.action.setBadgeBackgroundColor({ color: '#b42318' });
+      await chrome.action.setTitle({
+        title: `SIH26171 — could not observe: ${String(error)}`,
+      });
+    }
+  })();
 });

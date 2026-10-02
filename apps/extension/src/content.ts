@@ -75,19 +75,22 @@
     }
   }
 
-  chrome.runtime.sendMessage(
-    {
-      kind: 'COLLECT',
-      url: location.href,
-      title: document.title,
-      segments: collect(),
-      frameBlind: frameBlind(),
-    },
-    function () {
-      // Reading lastError suppresses the console noise that appears when the
-      // worker is asleep. There is deliberately no retry: a collection that
-      // failed simply did not happen, and claiming otherwise would be worse.
-      void chrome.runtime.lastError;
+  chrome.runtime.onMessage.addListener(
+    function (message, _sender, sendResponse) {
+      // Nothing happens on page load. Collection begins only when the operator
+      // clicks the toolbar button, and only for that tab. A content script that
+      // collected on load would read every page the user merely visits, which is
+      // the opposite of a privacy tool (FR-AGT-7).
+      if (!message || message.kind !== 'COLLECT') return false;
+
+      sendResponse({
+        kind: 'COLLECT',
+        url: location.href,
+        title: document.title,
+        segments: collect(),
+        frameBlind: frameBlind(),
+      });
+      return false; // responded synchronously
     }
   );
 })();
