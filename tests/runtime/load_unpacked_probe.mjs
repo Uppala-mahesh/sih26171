@@ -10,6 +10,21 @@
  * Chrome 154 refuses --load-extension, which is why previous rounds drove Edge.
  * This runs real Chrome because the failure is in real Chrome's loader.
  *
+ * ── The hard limit, established rather than assumed ──────────────────────────
+ * Three routes to loading an unpacked extension were attempted from here:
+ *
+ *   1. --load-extension            -> "not allowed in Google Chrome, ignoring."
+ *   2. seeding extensions.settings -> silently discarded; extensions live in
+ *                                     HMAC-signed Secure Preferences.
+ *   3. developerPrivate.loadDirectory(DirectoryEntry, cb)
+ *                                  -> "Value must be an instance of
+ *                                     DirectoryEntry", which can only come from
+ *                                     a real file picker or a drop.
+ *
+ * So the install step needs one human click on an OS file dialog. Everything
+ * reachable from here is verified automatically instead; this script exists so
+ * that boundary is documented rather than rediscovered next time.
+ *
  * Usage:  node tests/runtime/load_unpacked_probe.mjs
  */
 
@@ -109,6 +124,16 @@ function probe(expression) {
 
 console.log('developerPrivate present :', await probe('typeof chrome.developerPrivate'));
 
+// Enumerate the real API surface instead of guessing method and property names.
+console.log('\ndeveloperPrivate API:');
+console.log(await probe(`Object.keys(chrome.developerPrivate).sort().join('  ')`));
+
+console.log('\nload* methods:');
+console.log(await probe(
+  `Object.keys(chrome.developerPrivate).filter(k=>/load/i.test(k)).sort()
+     .map(k=>k+'('+(chrome.developerPrivate[k].length)+' args)').join('  ') || 'none'`,
+));
+
 console.log('enable dev mode           :', await probe(`(async () => {
   await chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true });
   const c = await chrome.developerPrivate.getProfileConfiguration();
@@ -131,22 +156,30 @@ console.log('loadUnpacked              :', await probe(`(async () => {
   }
 })()`));
 
-// The loader records its complaints on the extension itself; read them back.
-console.log('reported errors           :', await probe(`(async () => {
+console.log('\n--- trying every loadDirectory calling convention ---');
+for (const expr of [
+  `chrome.developerPrivate.loadDirectory(${JSON.stringify(EXT)})`,
+  `chrome.developerPrivate.loadDirectory({ path: ${JSON.stringify(EXT)} })`,
+  `chrome.developerPrivate.loadDirectory({ filepath: ${JSON.stringify(EXT)} })`,
+  `chrome.developerPrivate.loadDirectory(undefined, ${JSON.stringify(EXT)})`,
+]) {
+  console.log('\n  ' + expr.slice(0, 70));
+  console.log('   ->', await probe(`(async () => {
+    try { const r = await chrome.developerPrivate.loadDirectory(${
+      expr.slice('chrome.developerPrivate.loadDirectory'.length)
+    }); return 'OK: ' + JSON.stringify(r); }
+    catch (e) { return 'FAILED: ' + (e && e.message ? e.message : String(e)); }
+  })()`));
+}
+
+console.log('\n--- installed extensions now ---');
+console.log(await probe(`(async () => {
   const info = await chrome.developerPrivate.getExtensionsInfo();
-  const mine = info.filter((e) => !e.state || e.name === 'SIH26171 Privacy Agent' || (e.manifest && e.manifest.name));
-  return JSON.stringify(
-    mine.map((e) => ({
-      name: e.name,
-      state: e.state,
-      disableReasons: e.disableReasons,
-      manifestErrors: e.manifestErrors,
-      runtimeErrors: (e.runtimeErrors || []).map((r) => r.message),
-      installWarnings: e.installWarnings,
-    })),
-    null,
-    1,
-  );
+  return JSON.stringify(info.filter(e => e.name && /SIH/i.test(e.name)).map(e => ({
+    name: e.name, state: e.state, disableReasons: e.disableReasons,
+    manifestErrors: e.manifestErrors,
+    runtimeErrors: (e.runtimeErrors || []).map(r => r.message),
+  })), null, 1);
 })()`));
 
 cleanup(0);
