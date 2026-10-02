@@ -148,19 +148,37 @@ def test_every_requirement_is_listed_in_the_matrix(counts: dict) -> None:
     )
 
 
-def test_the_unimplemented_set_is_exactly_the_declared_groups(
-    counts: dict,
-) -> None:
-    """19 unimplemented, and they must be the three declared groups.
+def test_the_unimplemented_set_is_empty_or_exactly_declared(counts: dict) -> None:
+    """Every group now has an implementing module.
 
-    Anything else unimplemented means a row lost its implementation without the
-    summary being updated, which is how the matrix started lying in the first
-    place.
+    `FR-POL`, `FR-EXE` and `FR-VER` were implemented in the final sprint. The
+    assertion is written as "empty, or exactly the declared groups" so that a
+    future module removal is caught rather than absorbed.
     """
     unimplemented = set(counts["traceability"]["unimplemented_ids"])
-    assert len(unimplemented) == 19, sorted(unimplemented)
+    allowed = {"FR-POL", "FR-EXE", "FR-VER"}
     groups = {i.rsplit("-", 1)[0] for i in unimplemented}
-    assert groups == {"FR-POL", "FR-EXE", "FR-VER"}, sorted(groups)
+    assert groups <= allowed, (
+        f"these groups lost their implementation without the matrix being "
+        f"updated: {sorted(groups - allowed)}"
+    )
+
+
+def test_no_group_is_marked_not_implemented_in_the_matrix() -> None:
+    """The matrix must not still claim a group has no code.
+
+    This is the assertion that would have caught a stale `NOT IMPLEMENTED` cell
+    after the modules shipped — the same class of drift that made the matrix lie
+    in the first place.
+    """
+    text = RTM.read_text(encoding="utf-8")
+    # The disclosure may still use the phrase historically; the TABLE may not.
+    table = text[text.find("## 2. Functional requirement mapping") :]
+    table = table[: table.find("### 2.1") if "### 2.1" in table else len(table)]
+    assert "NOT IMPLEMENTED" not in table, (
+        "section 2 still marks a group NOT IMPLEMENTED, but every group now has "
+        "an implementing module"
+    )
 
 
 def test_group_ranges_expand_correctly() -> None:

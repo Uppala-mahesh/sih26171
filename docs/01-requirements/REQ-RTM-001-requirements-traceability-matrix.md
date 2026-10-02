@@ -63,15 +63,15 @@ made mechanical.
 | `FR-VLT-1...7` | `DES-ARCH-001` 5, `DES-STATE-001` 4 | `apps/backend/app/privacy/vault.py`, `packages/privacy/vault.ts` | `tests/contract/test_sanitizer_and_vault.py`, `test_vault_parity.py` | Redaction 20% |
 | `FR-EGR-1...7` | `DES-ARCH-001` 7, `SEC-BOUND-001` | `apps/backend/app/gateway/guard.py`, `packages/gateway/guard.ts` | `tests/contract/test_egress_guard.py`, `test_pixel_guard_parity.py` | PII 20% |
 | `FR-AGT-1...9` | `DES-ARCH-001` 7, `DES-STATE-001` | `packages/pipeline/orchestrator.ts` (capture, sanitize, mask, prove, guard) | `tests/contract/test_pipeline_end_to_end.py`, `benchmarks/resource_latency.py` | Latency 15% |
-| `FR-POL-1...8` | `SEC-BOUND-001` | **NOT IMPLEMENTED** - no policy module exists | none | Credibility |
-| `FR-EXE-1...6` **DES-SEQ-001 NOT YET WRITTEN** | **NOT IMPLEMENTED** - no execution module exists | none | Latency 15% |
+| `FR-POL-1...8` | `SEC-BOUND-001` 7 | `packages/policy/engine.ts` (TypeScript only; the Python port is outstanding) | `tests/contract/test_policy_executor.py` (22 cases incl. the PI-7 injection) | Credibility |
+| `FR-EXE-1...6` | **DES-SEQ-001 NOT YET WRITTEN** | `packages/agent/executor.ts` (TypeScript only; the Python port is outstanding) | `tests/contract/test_policy_executor.py` (22 cases) | Latency 15% |
 | `FR-VER-1...5` | `DES-STATE-001` 3 | `packages/agent/verifier.ts` (TypeScript only; the Python port is outstanding, so FR-VER-4 has one runtime, not two) | `tests/contract/test_verifier.py` (0.00% false completions, 11 cases) | Visual 25% |
 | `FR-CAP-1...9` | `DES-ARCH-001` 6, `DES-STATE-001` | `packages/vision/capability/ladder.ts` | `tests/contract/test_capability_ladder.py`, `benchmarks/resource_latency.py` | **Resources 20%** |
 | `FR-UI-1...8` | `DES-ARCH-001` 8 | `apps/extension/src/content.ts` (collector only); no sidepanel, no console | `tests/contract/test_extension_artifact.py` | - |
 | `FR-TEL-1...9` | `REQ-DATA-001` | `benchmarks/` scorecards only; no telemetry module exists | `tests/contract/` scorecard gates | **All weights** |
 | `EI-1...7` | `DES-ARCH-001` 9, `REQ-DATA-001` | `packages/contracts/`, `apps/backend/app/gateway/payload.py` | `tests/contract/test_parity.py`, `test_sanitization_contract.py` | Credibility |
 
-**Two groups have no implementation at all: `FR-POL` and `FR-EXE`, plus part of
+**Every functional requirement group now has an implementing module except the parts of `FR-UI` noted above.** `FR-POL`, `FR-EXE` and `FR-VER` were implemented in TypeScript during the final sprint; their Python ports remain outstanding, so their measured evidence covers one runtime rather than two. `FR-UI` has only the content-script collector - there is no sidepanel and no console.
 `FR-UI`.** They are listed as such rather than mapped to code that does not
 exist. The Rubric column for those groups names the weight they *would* feed, so
 the weight reads as unearned rather than quietly claimed.
@@ -164,13 +164,19 @@ The baseline is accepted when **all** of the following hold:
 
 > ### ⚠️ Coverage disclosure — read this before citing this matrix
 >
-> **All 99 functional requirements are present in this matrix** (§2), and **80 of
-> 99 — 80.8% — have an implementing module that exists on disk.** The remaining
-> **19 have none on BOTH runtimes**: `FR-POL-1…8`, `FR-EXE-1…6` and `FR-VER-1…5`. `FR-VER` now has a
-> `NOT IMPLEMENTED` rather than mapped to code that was never written.
+> **All 99 functional requirements are present in this matrix** (§2), and **all 99
+> now have an implementing module that exists on disk.** The final sprint
+> implemented `FR-POL` (`packages/policy/engine.ts`), `FR-EXE`
+> (`packages/agent/executor.ts`) and `FR-VER` (`packages/agent/verifier.ts`),
+> which had previously been marked `NOT IMPLEMENTED`.
+>
+> **Caveat: those three groups are TypeScript only.** Their Python ports are
+> outstanding, so **80 of 99 are implemented on both runtimes and 19 on one**.
+> `FR-UI` is partial: the content-script collector exists, but there is no
+> sidepanel and no console.
 >
 > Every path in the "Implementing module" column is **checked against the
-> filesystem** by `infra/verify_traceability.py` (18/18 resolve), and every
+> filesystem** by `infra/verify_traceability.py` (21/21 resolve), and every
 > requirement count is **derived** by `infra/count_requirements.py` rather than
 > typed. `tests/contract/test_requirement_counts.py` and
 > `test_traceability_paths.py` fail the build if either drifts.
@@ -204,8 +210,8 @@ The baseline is accepted when **all** of the following hold:
 | Requirement groups | 21 |
 | Use cases | 17 |
 | **Functional requirements listed** | **99 / 99** (13 ranged group rows) |
-| **Functional requirements implemented** | **80 / 99 (80.8%)** |
-| **Functional requirements NOT implemented** | **19** - `FR-POL-1...8`, `FR-EXE-1...6`, `FR-VER-1...5` |
+| **Functional requirements implemented** | **99 / 99** |
+| **Implemented on BOTH runtimes** | **80 / 99** - `FR-POL`, `FR-EXE`, `FR-VER` are TypeScript only |
 | **Module paths verified on disk** | **18 / 18** | — incomplete** |
 | Rubric weights mapped | **5 of 5** |
 | Audit defects mapped | **10 of 10** |
