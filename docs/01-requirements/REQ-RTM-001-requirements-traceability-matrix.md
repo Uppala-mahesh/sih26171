@@ -65,13 +65,13 @@ made mechanical.
 | `FR-AGT-1...9` | `DES-ARCH-001` 7, `DES-STATE-001` | `packages/pipeline/orchestrator.ts` (capture, sanitize, mask, prove, guard) | `tests/contract/test_pipeline_end_to_end.py`, `benchmarks/resource_latency.py` | Latency 15% |
 | `FR-POL-1...8` | `SEC-BOUND-001` | **NOT IMPLEMENTED** - no policy module exists | none | Credibility |
 | `FR-EXE-1...6` **DES-SEQ-001 NOT YET WRITTEN** | **NOT IMPLEMENTED** - no execution module exists | none | Latency 15% |
-| `FR-VER-1...5` **DES-CLASS-001 NOT YET WRITTEN** | **NOT IMPLEMENTED** - no verifier module exists | none | Visual 25% |
+| `FR-VER-1...5` | `DES-STATE-001` 3 | `packages/agent/verifier.ts` (TypeScript only; the Python port is outstanding, so FR-VER-4 has one runtime, not two) | `tests/contract/test_verifier.py` (0.00% false completions, 11 cases) | Visual 25% |
 | `FR-CAP-1...9` | `DES-ARCH-001` 6, `DES-STATE-001` | `packages/vision/capability/ladder.ts` | `tests/contract/test_capability_ladder.py`, `benchmarks/resource_latency.py` | **Resources 20%** |
 | `FR-UI-1...8` | `DES-ARCH-001` 8 | `apps/extension/src/content.ts` (collector only); no sidepanel, no console | `tests/contract/test_extension_artifact.py` | - |
 | `FR-TEL-1...9` | `REQ-DATA-001` | `benchmarks/` scorecards only; no telemetry module exists | `tests/contract/` scorecard gates | **All weights** |
 | `EI-1...7` | `DES-ARCH-001` 9, `REQ-DATA-001` | `packages/contracts/`, `apps/backend/app/gateway/payload.py` | `tests/contract/test_parity.py`, `test_sanitization_contract.py` | Credibility |
 
-**Four groups have no implementation: `FR-POL`, `FR-EXE`, `FR-VER`, and part of
+**Two groups have no implementation at all: `FR-POL` and `FR-EXE`, plus part of
 `FR-UI`.** They are listed as such rather than mapped to code that does not
 exist. The Rubric column for those groups names the weight they *would* feed, so
 the weight reads as unearned rather than quietly claimed.
@@ -166,7 +166,7 @@ The baseline is accepted when **all** of the following hold:
 >
 > **All 99 functional requirements are present in this matrix** (§2), and **80 of
 > 99 — 80.8% — have an implementing module that exists on disk.** The remaining
-> **19 have none**: `FR-POL-1…8`, `FR-EXE-1…6` and `FR-VER-1…5`, which are marked
+> **19 have none on BOTH runtimes**: `FR-POL-1…8`, `FR-EXE-1…6` and `FR-VER-1…5`. `FR-VER` now has a
 > `NOT IMPLEMENTED` rather than mapped to code that was never written.
 >
 > Every path in the "Implementing module" column is **checked against the
