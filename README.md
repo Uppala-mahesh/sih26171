@@ -94,7 +94,7 @@ sih-agent-v2/
 | Phase | State |
 |---|---|
 | **Phase 0 — Inception** | ✅ **Complete** — Charter · Reuse Ledger · Executive Brief · Isolation Protocol · `CR-001` · `CR-002` |
-| **Phase 1 — Requirements** | 🟡 **Baseline written, counts corrected, RTM incomplete** — 99 FR + 53 NFR + 7 EI = **159**; RTM covers **19/99** · *awaiting Product Owner sign-off on Gate G1* |
+| **Phase 1 — Requirements** | 🟡 **Baseline written, counts corrected, RTM incomplete** — 99 FR + 53 NFR + 7 EI = **159**; RTM lists 99/99, **80 implemented** · *awaiting Product Owner sign-off on Gate G1* |
 | **Phase 2 — Design** | 🟡 **Partial** — C4 architecture · privacy boundary · threat model ✅ · **class model, sequences, data contracts and state-machine spec still owed** |
 | **Sprint 1 — Privacy core** | ✅ **Complete** — detector · vault · sanitizer · pixel redactor · egress guard, on **both** Python and TypeScript, parity-locked |
 | **Sprint 2 — Runtime** | ✅ **Complete** — MV3 Chrome extension · offscreen Z1 · end-to-end pipeline |

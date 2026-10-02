@@ -30,7 +30,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "infra"))
 
-from count_requirements import RTM, count, prose  # noqa: E402
+from count_requirements import (  # noqa: E402
+    RTM,
+    count,
+    expand_group_ranges,
+    prose,
+)
 
 README = ROOT / "README.md"
 ARCH = ROOT / "docs" / "02-design" / "DES-ARCH-001-solution-architecture.md"
@@ -97,42 +102,73 @@ def test_the_rtm_contains_no_phantom_requirements(counts: dict) -> None:
 def test_the_rtm_states_its_real_coverage(counts: dict) -> None:
     """Whatever coverage the RTM publishes must be the real number.
 
-    It publishes 19 of 99. It previously implied 100%. This test exists so
-    that "complete" can never again be written over a 19% matrix.
+    Measured two ways, because they are different facts:
+      * PRESENCE    - is the requirement listed at all?
+      * IMPLEMENTATION - does its group row name a module that exists?
+
+    The matrix lists all 99 through ranged group rows; 80 have an
+    implementation. It previously published "19 / 99", which was an
+    identifier-only count that saw only the endpoints of each range.
     """
     trace = counts["traceability"]
-    # Target the summary row specifically. A bare `N / M` search picks up ratios
-    # written for other purposes and would report a figure nobody published.
+    text = RTM.read_text(encoding="utf-8")
     published = re.search(
-        r"Functional requirements traced\**\s*\|\s*\**(\d+)\s*/\s*(\d+)",
-        RTM.read_text(encoding="utf-8"),
+        r"Functional requirements implemented\**\s*\|\s*\**(\d+)\s*/\s*(\d+)",
+        text,
     )
     if published is None:
         pytest.fail(
-            "REQ-RTM-001 publishes no traced-coverage row. A matrix that will "
-            "not state its coverage will be believed to be complete."
+            "REQ-RTM-001 publishes no implemented-coverage row. A matrix that "
+            "will not state its coverage will be believed complete."
         )
     traced, total = int(published.group(1)), int(published.group(2))
-    assert traced == trace["functional_in_rtm"], (
-        f"RTM publishes {traced} traced; the documents contain "
-        f"{trace['functional_in_rtm']}"
+    assert traced == trace["implemented"], (
+        f"RTM publishes {traced} implemented; the documents show "
+        f"{trace['implemented']}"
     )
     assert total == counts["functional"], (
         f"RTM denominator is {total}; the SRS contains {counts['functional']}"
     )
 
 
-def test_the_known_traceability_gap_is_pinned(counts: dict) -> None:
-    """Pins the outstanding gap so it cannot quietly widen.
+def test_every_requirement_is_listed_in_the_matrix(counts: dict) -> None:
+    """Presence is total, and that is now measured rather than assumed.
 
-    80 of 99 functional requirements have no RTM row. That is the largest
-    outstanding item in the SDLC, and this assertion makes it visible on every
-    run instead of leaving a reviewer to discover it.
+    This is the assertion that would have caught the range bug: a scan for
+    literal ids saw 19 endpoints and reported them as the coverage.
     """
-    assert counts["traceability"]["functional_untraced"] == 80, (
-        f"untraced count moved to {counts['traceability']['functional_untraced']}. "
-        f"If rows were added, update REQ-RTM-001 and this number together."
+    trace = counts["traceability"]
+    assert trace["present_in_matrix"] == counts["functional"], (
+        f"{trace['unlisted_in_matrix']} requirements are not listed: "
+        f"{trace['unlisted_ids']}"
     )
+    assert trace["named_via_group_range"] > 0, (
+        "no group ranges were expanded; if this is zero the range expander has "
+        "stopped working and the coverage figure above is meaningless again"
+    )
+
+
+def test_the_unimplemented_set_is_exactly_the_declared_groups(
+    counts: dict,
+) -> None:
+    """19 unimplemented, and they must be the three declared groups.
+
+    Anything else unimplemented means a row lost its implementation without the
+    summary being updated, which is how the matrix started lying in the first
+    place.
+    """
+    unimplemented = set(counts["traceability"]["unimplemented_ids"])
+    assert len(unimplemented) == 19, sorted(unimplemented)
+    groups = {i.rsplit("-", 1)[0] for i in unimplemented}
+    assert groups == {"FR-POL", "FR-EXE", "FR-VER"}, sorted(groups)
+
+
+def test_group_ranges_expand_correctly() -> None:
+    """Unit-check the expander, because the coverage figure depends on it."""
+    assert expand_group_ranges("`FR-PII-1...9`") == {f"FR-PII-{n}" for n in range(1, 10)}
+    assert expand_group_ranges("`FR-VER-1...5`") == {f"FR-VER-{n}" for n in range(1, 6)}
+    # A lone id with no range must not be invented into a range.
+    assert expand_group_ranges("`FR-RED-3`") == set()
 
 
 def test_counting_is_reproducible(counts: dict) -> None:

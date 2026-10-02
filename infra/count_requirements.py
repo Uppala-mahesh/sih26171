@@ -67,6 +67,28 @@ def unique(text: str, pattern: re.Pattern[str]) -> set[str]:
     return set(pattern.findall(text))
 
 
+# A group row is written as a range: `FR-PII-1...9`. The literal ids in the text
+# are only the endpoints, so counting identifiers UNDERSTATES coverage.
+#
+# This was not hypothetical. The matrix covers all 99 functional requirements
+# through thirteen ranged rows, and an identifier-only count reported 19/99 - a
+# 19.2% "coverage" figure that was published in the matrix itself as a
+# disclosure before the measurement behind it was checked. The number was wrong
+# in the direction that flattered nobody and misled everyone.
+GROUP_RANGE = re.compile(r"\b(FR-[A-Z]+)-(\d+)\s*(?:\.\.\.|…|–)\s*(\d+)\b")
+
+
+def expand_group_ranges(text: str) -> set[str]:
+    """Expand `FR-PII-1...9` into every id it stands for."""
+    expanded: set[str] = set()
+    for match in GROUP_RANGE.finditer(text):
+        group, low, high = match.group(1), int(match.group(2)), int(match.group(3))
+        step = 1 if high >= low else -1
+        for n in range(low, high + step, step):
+            expanded.add(f"{group}-{n}")
+    return expanded
+
+
 def prose(text: str) -> str:
     """The document's ASSERTIONS, with blockquoted material removed.
 
@@ -86,6 +108,23 @@ def group_of(identifier: str) -> str:
     return parts[0] if len(parts) == 2 else identifier
 
 
+
+
+def _is_disclosure_cell(cell: str) -> bool:
+    """Does this cell DECLARE that something is absent, rather than naming it?
+
+    Mirrors verify_traceability._is_disclosure_cell. Duplicated rather than
+    imported because the two tools must be independently runnable, and a shared
+    helper would let one bug silence both checks at once.
+    """
+    normalised = cell.strip().strip("`* ").lower()
+    if normalised in {"-", "--", "none", "n/a", "tbd"}:
+        return True
+    return any(
+        phrase in cell.lower()
+        for phrase in ("not yet written", "not implemented", "not started")
+    )
+
 def count() -> dict:
     srs_text = SRS.read_text(encoding="utf-8")
     nfr_text = NFR.read_text(encoding="utf-8")
@@ -99,12 +138,36 @@ def count() -> dict:
     by_group = Counter(group_of(f) for f in functional)
     unexpected = sorted(g for g in by_group if g not in FUNCTIONAL_GROUPS)
 
-    # Traceability: which functional requirements the RTM actually names.
-    # Only assertive rows count. A disclosure that lists the phantom ids in
-    # order to say they were removed is not itself a phantom reference.
-    traced = unique(prose(rtm_text), FR_RE) & functional
-    untraced = sorted(functional - traced)
-    phantom = sorted(unique(prose(rtm_text), FR_RE) - functional)
+    # ── coverage, measured two ways ─────────────────────────────────────────
+    # (1) PRESENCE: does the matrix name the requirement at all, either literally
+    #     or as part of a ranged group row?
+    asserted = prose(rtm_text)
+    named = unique(asserted, FR_RE) & functional
+    ranged = expand_group_ranges(asserted) & functional
+    covered_by_matrix = named | ranged
+
+    # (2) IMPLEMENTATION: does the requirement's group row name a module that
+    #     exists? A requirement can be listed and still be unbuilt, and those are
+    #     different facts that the matrix used to blur.
+    unimplemented_groups = set()
+    for line in asserted.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        if not _is_disclosure_cell(cells[2]):
+            continue
+        for match in GROUP_RANGE.finditer(cells[0]):
+            group, low, high = match.group(1), int(match.group(2)), int(match.group(3))
+            step = 1 if high >= low else -1
+            for n in range(low, high + step, max(step, 1)):
+                identifier = f"{group}-{n}"
+                if identifier in functional:
+                    unimplemented_groups.add(identifier)
+
+    implemented = covered_by_matrix - unimplemented_groups
+    phantom = sorted(unique(asserted, FR_RE) - functional)
 
     return {
         "source": "counted from the documents themselves",
@@ -116,10 +179,17 @@ def count() -> dict:
         "groups": {g: by_group[g] for g in FUNCTIONAL_GROUPS if g in by_group},
         "unexpected_groups": unexpected,
         "traceability": {
-            "functional_in_rtm": len(traced),
-            "functional_untraced": len(untraced),
-            "coverage": round(len(traced) / len(functional), 4) if functional else 0.0,
-            "untraced_ids": untraced,
+            "present_in_matrix": len(covered_by_matrix),
+            "named_literally": len(named),
+            "named_via_group_range": len(ranged - named),
+            "unlisted_in_matrix": len(functional - covered_by_matrix),
+            "unlisted_ids": sorted(functional - covered_by_matrix),
+            "implemented": len(implemented),
+            "unimplemented": len(unimplemented_groups),
+            "unimplemented_ids": sorted(unimplemented_groups),
+            "implementation_coverage": (
+                round(len(implemented) / len(functional), 4) if functional else 0.0
+            ),
             "phantom_ids_in_rtm": phantom,
         },
         "use_cases": len(unique(uc_text, re.compile(r"UC-\d+"))),

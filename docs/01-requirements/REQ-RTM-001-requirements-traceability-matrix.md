@@ -164,29 +164,36 @@ The baseline is accepted when **all** of the following hold:
 
 > ### ⚠️ Coverage disclosure — read this before citing this matrix
 >
-> This matrix traces **19 / 99** functional requirements (**19.2%**). It is **not
-> complete**, and it did not used to say so.
+> **All 99 functional requirements are present in this matrix** (§2), and **80 of
+> 99 — 80.8% — have an implementing module that exists on disk.** The remaining
+> **19 have none**: `FR-POL-1…8`, `FR-EXE-1…6` and `FR-VER-1…5`, which are marked
+> `NOT IMPLEMENTED` rather than mapped to code that was never written.
 >
-> Found by `infra/count_requirements.py`, which derives every count by reading
-> the documents rather than trusting a typed figure. Three artifacts had claimed
-> **"102 functional / 155 total"** while the SRS actually contains **99** and
-> **152** (excluding the 7 `EI-*` interface requirements) — **159** including
-> them. Those figures are corrected throughout.
+> Every path in the "Implementing module" column is **checked against the
+> filesystem** by `infra/verify_traceability.py` (18/18 resolve), and every
+> requirement count is **derived** by `infra/count_requirements.py` rather than
+> typed. `tests/contract/test_requirement_counts.py` and
+> `test_traceability_paths.py` fail the build if either drifts.
 >
-> **Outstanding: 80 functional requirements have no row here.** That is the
-> largest single gap in the SDLC and the next thing to close.
+> **Three corrections, kept because a correction with no stated original is
+> indistinguishable from never having been wrong.**
 >
-> `tests/contract/test_requirement_counts.py` fails if this coverage figure ever
-> diverges from the documents, so the matrix can no longer silently overstate
-> itself.
+> 1. **Counts.** Three artifacts claimed *"102 functional / 155 total"* while the
+>    SRS contains **99** and **152** (excluding the 7 `EI-*` interface
+>    requirements) — **159** including them. Corrected throughout.
+> 2. **Coverage, measured wrong first.** An identifier-only count reported this
+>    matrix as *"19 / 99 (19.2%)"*, and that figure was published here as a
+>    disclosure before the measurement behind it was checked. The matrix writes
+>    its groups as ranges (`FR-PII-1...9`), so a scan for literal ids saw only the
+>    endpoints. The real figures are above. **The error flattered nothing and
+>    misled everyone.**
+> 3. **Phantom ids, retracted.** A first pass also reported nine "phantom"
+>    requirements here. That was a bug in the counter: the pattern
+>    `FR-[A-Z]+-\d+` matches *inside* `NFR-PERF-1`, so eight legitimate
+>    non-functional rows were misreported. There are no phantom ids.
 >
-> **Correction to an earlier correction.** A first pass of the counter reported
-> nine "phantom" requirement ids here. That was a bug in the counter, not a
-> defect in this matrix: the pattern `FR-[A-Z]+-\d+` also matches *inside*
-> `NFR-PERF-1`, so eight legitimate non-functional rows were misreported as
-> fabricated functional traceability. There are no phantom ids. The pattern now
-> anchors on a word boundary. This note is kept because a correction with no
-> stated original is indistinguishable from never having been wrong.
+> The largest outstanding item in the SDLC is the **19 unimplemented
+> requirements**, not 80 untraced ones.
 
 | Dimension | Count |
 |---|---|
@@ -196,7 +203,10 @@ The baseline is accepted when **all** of the following hold:
 | **Total requirements** | **159** |
 | Requirement groups | 21 |
 | Use cases | 17 |
-| **Functional requirements traced** | **19 / 99 (19.2%) — incomplete** |
+| **Functional requirements listed** | **99 / 99** (13 ranged group rows) |
+| **Functional requirements implemented** | **80 / 99 (80.8%)** |
+| **Functional requirements NOT implemented** | **19** - `FR-POL-1...8`, `FR-EXE-1...6`, `FR-VER-1...5` |
+| **Module paths verified on disk** | **18 / 18** | — incomplete** |
 | Rubric weights mapped | **5 of 5** |
 | Audit defects mapped | **10 of 10** |
 | Change requests closed | 2 |

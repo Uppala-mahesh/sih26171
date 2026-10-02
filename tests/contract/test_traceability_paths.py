@@ -90,7 +90,7 @@ def test_the_matrix_states_how_much_it_covers(report: dict) -> None:
     text = (
         ROOT / "docs" / "01-requirements" / "REQ-RTM-001-requirements-traceability-matrix.md"
     ).read_text(encoding="utf-8")
-    assert "19 / 99" in text, "the RTM no longer publishes its real coverage"
+    assert "80 / 99" in text, "the RTM no longer publishes its real implemented coverage"
     assert "NOT IMPLEMENTED" in text, (
         "the matrix no longer marks unimplemented groups; they must be visible"
     )
