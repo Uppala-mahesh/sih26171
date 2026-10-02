@@ -166,22 +166,30 @@ const SCENARIOS = [
     },
   },
   {
-    // The opposite case. A canvas can display a name that appears nowhere in the
-    // DOM, so this MUST still withhold - and must say which surface it saw.
-    name: 'a page with painted surfaces still withholds',
+    // Almost every real website paints something - a logo, an icon, a background.
+    // Refusing to work on all of them is a correct refusal that makes the tool
+    // useless, so this transmits with the limitation DECLARED rather than
+    // claiming the pixels were checked.
+    name: 'a page with painted surfaces transmits, declaring the limitation',
     async collect() {
       return {
         kind: 'COLLECT',
         url: 'https://example.test/canvas',
         title: 'A canvas page',
-        segments: [{ elementId: 'n0', text: 'Nothing sensitive here.', tagName: 'P', ariaLabel: '' }],
+        segments: [{ elementId: 'n0', text: 'Call +91 98765 43210', tagName: 'P', ariaLabel: '' }],
         frameBlind: false,
         visualSurfaces: 3,
       };
     },
     expect(seen) {
-      assert.equal(seen.badge.at(-1), 'HOLD', 'painted content must NOT be declared clean');
-      assert.match(seen.title.at(-1), /transmitted: false/);
+      assert.equal(seen.badge.at(-1), 'DEG', 'painted content must be DEGRADED, not clean');
+      const title = seen.title.at(-1);
+      assert.match(title, /transmitted: true/, 'DEGRADED must still transmit');
+      // The limitation must be visible to the operator, with the real count.
+      assert.match(title, /3 painted element/, 'the painted-surface count is not reported');
+      assert.match(title, /could NOT be inspected/);
+      // And the redaction still happened - degrading is not a licence to skip.
+      assert.match(title, /redactions: [1-9]/);
     },
   },
   {

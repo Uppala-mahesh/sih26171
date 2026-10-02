@@ -107,19 +107,29 @@ def test_the_service_worker_is_the_single_privacy_boundary() -> None:
 def test_pixel_blindness_is_declared_not_hidden() -> None:
     """A worker has no `document`, so it cannot rasterise page pixels.
 
-    The honest behaviour is to hand the pipeline no frames so it derives
-    NOT_INSTRUMENTED and the guard WITHHOLDS. The dishonest behaviour - and the
-    v1 defect - is to pass an empty scan off as verified.
+    The honest behaviour is to hand the pipeline no frames, let it derive the right
+    state from `visualSurfaces`, and tell the operator which state it landed on and
+    why. The dishonest behaviour - and the v1 defect - is to pass an empty scan off
+    as verified.
+
+    Asserted on substance rather than an exact phrase. Matching a literal string
+    meant a harmless rewording of the tooltip broke the test, which is precisely
+    the wrong incentive to hand a test.
     """
     worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
     assert "captureFrames: () => []" in worker, (
         "the worker fabricates frames; a service worker has no document and "
         "cannot produce pixels"
     )
-    # The claim must be visible to the operator, not buried in a comment.
-    assert "cannot be inspected" in worker, (
-        "pixel blindness is not disclosed in the user-facing title"
-    )
+    lowered = worker.lower()
+    # Concepts, not phrases. Checking for a contiguous sentence is brittle by
+    # construction: TypeScript splits these across adjacent string literals, so
+    # the phrase never appears verbatim in the built file even when the tooltip
+    # reads perfectly in the UI.
+    for concept in ("painted", "inspected", "degraded"):
+        assert concept in lowered, (
+            f"pixel blindness is not disclosed to the operator ({concept})"
+        )
 
 
 def test_the_offscreen_document_is_gone() -> None:

@@ -245,24 +245,41 @@ export function runPipeline(
       missingCheck: pixelFailure !== null ? 'pixel_rescan' : 'text_rescan',
       declaredAt: now,
     };
-  } else if (frames.length === 0) {
-    // A capability claim with nothing examined is the defect this project exists
-    // to fix. v1's vision pipeline could fail silently and return a 1x1 frame -
-    // or no frame at all - and the payload was still reported sanitized
-    // (defects G-2/G-6).
+  } else if (frames.length === 0 && adapters.visualSurfaces === undefined) {
+    // The collector could not say whether anything is painted, and nothing was
+    // captured either. Those two facts are genuinely compatible with either "this
+    // page is text" or "the capture failed", so the system still fails closed.
     //
-    // Declaring `pixel_rescan` as a verifier that ran over zero regions is
-    // exactly that lie, one level down: the proof would be honest about its own
-    // contents and still mean nothing. `regionsChecked` would read 1 (the text
-    // segment) and the reader would reasonably conclude pixels were covered.
-    //
-    // The system cannot distinguish "this page has no pixels" from "the capture
-    // failed", so it fails closed. An adapter that genuinely has nothing to
-    // verify must say so via `canVerifyPixels: false`, which is a claim the
-    // pipeline can reason about rather than a silent absence.
+    // This is the branch that existed before `visualSurfaces` was introduced. It
+    // caught EVERY page with any image, canvas or background, which is to say
+    // essentially every real website - a correct refusal that made the tool
+    // permanently useless.
     evidence = {
       state: 'NOT_INSTRUMENTED',
       missingCheck: 'pixel_rescan',
+      declaredAt: now,
+    };
+  } else if (frames.length === 0 && (adapters.visualSurfaces ?? 0) > 0) {
+    // THE INTERESTING CASE, and the one this whole design keeps circling.
+    //
+    // The text channel is fully verified: sanitised, re-scanned, audited, and the
+    // vault shows no residual. What is missing is the pixel channel, because this
+    // build cannot rasterise. The page paints `visualSurfaces` things, and any of
+    // them could in principle display text the DOM walker never saw.
+    //
+    // Calling that SANITIZED would claim a coverage that was not achieved. Calling
+    // it NOT_INSTRUMENTED would claim the text channel is worthless when it is
+    // demonstrably clean - and refuse to work on every page with a logo.
+    //
+    // DEGRADED is the honest middle, and it already existed in the contract with
+    // a verdict of ALLOW_DECLARED: transmit, carrying the limitation in the
+    // payload so the RECEIVER knows exactly what was and was not checked. That is
+    // materially different from staying silent, and materially different from
+    // overclaiming.
+    evidence = {
+      state: 'DEGRADED',
+      reason: 'opaque_region',
+      rung,
       declaredAt: now,
     };
   } else if (unresolved.length > 0) {

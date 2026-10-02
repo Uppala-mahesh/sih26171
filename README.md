@@ -196,22 +196,36 @@ so it is the only one that can answer.
 
 That number decides the verdict:
 
-| Page | Verdict | Why |
+| Page | Verdict | Behaviour |
 |---|---|---|
-| Plain text, no images/canvas | **`SANITIZED` → `OK`** | There is no painted content, so there are no pixels that could hide anything. Coverage is complete because there was nothing to cover. |
-| Any canvas/image/video/CSS background | **`WITHHOLD` → `HOLD`** | Painted content exists and cannot be inspected from here. |
-| Count unavailable | **`WITHHOLD` → `HOLD`** | An unknown count is never read as zero. |
+| Text only, nothing painted | **`SANITIZED`** → `OK` | Transmits. Nothing painted can conceal anything. |
+| Images / canvas / CSS backgrounds | **`DEGRADED`** → `DEG` | **Transmits**, with the uninspected-surface count declared in the payload so the receiver knows exactly what was not checked. |
+| Surface count unavailable | **`NOT_INSTRUMENTED`** → `HOLD` | Withholds. An unknown count is never read as zero. |
 
-An earlier build returned zero frames unconditionally, which made the pipeline
-derive `NOT_INSTRUMENTED` on **every** page. That was fail-closed and useless —
-it protected nothing while making the tool incapable of doing anything at all.
-Conflating *"no pixels exist to check"* with *"I cannot check the pixels"* is the
-bug the `visualSurfaces` count removes.
+`DEGRADED` is not a softened failure — it is a *different claim*. It asserts the
+text channel was fully verified and states plainly that the pixel channel was not.
+The verdict `ALLOW_DECLARED` carries that limitation to the receiver, which is
+materially different from staying silent and materially different from claiming
+full coverage.
+
+### Two earlier versions of this decision, and why both were wrong
+
+**v1 — withhold whenever any frame is missing.** Correct, and useless: it refused
+to work on every page with a logo, an icon, or a background, which is
+essentially every real website. A guard that blocks all traffic protects nothing
+because it permits none.
+
+**v2 — transmit when the painted-surface count is zero, withhold otherwise.**
+Better, and still useless, because it kept the same threshold. Almost no real page
+has a painted-surface count of zero.
+
+The threshold was never the thing that needed fixing; the *state* was. The
+question is not "were the pixels checked" but "what exactly do we promise, and can
+the receiver see the promise?" `DEGRADED` answers it.
 
 It is still true that the 25% visual weight is **not yet earned**: the pixel
-redaction, IoU, and irreversibility benchmarks measure the core algorithms, not
-a Chrome integration. Pages with painted content are withheld rather than
-scanned — honestly, and visibly.
+redaction, IoU and irreversibility benchmarks measure the core algorithms, not a
+Chrome integration. Painted content is *declared uninspected*, not scanned.
 
 ## 9. Measured results
 

@@ -154,7 +154,7 @@ async function reportFailure(detail: string): Promise<void> {
  * broken, so the declared state goes on the badge. `HOLD` is the important one:
  * it means the system refused to transmit.
  */
-async function announce(result: PipelineResult): Promise<void> {
+async function announce(result: PipelineResult, visualSurfaces?: number): Promise<void> {
   const state = result.evidence.state;
   const reason = result.pixelFailure ?? result.transmitError;
   const badge = {
@@ -166,24 +166,37 @@ async function announce(result: PipelineResult): Promise<void> {
 
   trace(`verdict ${state}, transmitted=${result.transmitted}`);
 
+  // Each state gets a plain-language account. A bare three-letter badge told the
+  // operator nothing at all, and was reported back as "it does not work" - which
+  // is the cost of assuming the audience knows the contract.
+  const explain =
+    state === 'SANITIZED'
+      ? 'Every text segment was scanned and the sensitive values replaced.'
+      : state === 'DEGRADED'
+        ? 'Text was fully sanitised and sent. ' +
+          (visualSurfaces ?? 0) +
+          ' painted element(s) - images, canvas, CSS backgrounds - could NOT be ' +
+          'inspected for text, so that limitation travels with the payload and ' +
+          'the receiver is told.'
+        : state === 'UNCERTAIN'
+          ? 'Some entity types fell below the confidence threshold and were ' +
+            'redacted anyway.'
+          : 'Nothing was sent. This page has painted content that cannot be ' +
+            'verified from here, and an unverifiable page is not sent.';
+
   try {
     await chrome.action.setBadgeText({ text: badge?.text ?? '?' });
     await chrome.action.setBadgeBackgroundColor({ color: badge?.color ?? '#57606a' });
     await chrome.action.setTitle({
       title:
         `SIH26171 — ${state}\n` +
-        `rung: ${result.rung}\n` +
+        explain +
+        `\n\nrung: ${result.rung}\n` +
         `redactions: ${result.redactionCount}\n` +
         `text segments: ${result.textSegments}\n` +
         `frames verified: ${result.framesVerified}\n` +
         `transmitted: ${result.transmitted}` +
-        (reason ? `\n${reason}` : '') +
-        (state === 'SANITIZED'
-          ? '\n\nThis page has no images, canvas, video or CSS backgrounds, so' +
-            '\nthere are no painted pixels that could conceal text. The text was' +
-            '\ninspected and the sensitive values replaced with placeholders.'
-          : '\n\nThis page has painted content that cannot be inspected from here,' +
-            '\nso the payload is withheld rather than declared clean.'),
+        (reason ? `\n${reason}` : ''),
     });
   } catch (error) {
     console.warn('[sih] could not set the badge:', error);
@@ -274,7 +287,7 @@ chrome.action.onClicked.addListener((tab) => {
       // observation even though nothing else reads it afterwards.
       vault.clear();
 
-      await announce(result);
+      await announce(result, collected.visualSurfaces);
     } catch (error) {
       // Chrome reports every unreachable context with the same sentence, so the
       // only way to be useful is to name the CAUSES rather than repeat it. In
