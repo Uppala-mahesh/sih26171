@@ -256,17 +256,24 @@ def test_no_message_is_sent_to_a_context_that_does_not_exist() -> None:
     )
 
 
-def test_a_missing_content_script_says_so_plainly() -> None:
-    """The single most likely real failure must be named in the error.
+def test_a_missing_collector_is_injected_not_merely_reported() -> None:
+    """A tab open before the install must be recoverable, not just explained.
 
-    A tab open before the extension was installed has no content script, and
-    `tabs.sendMessage` fails with the same generic string as every other routing
-    problem. Telling the operator to reload the page is the difference between a
-    five-second fix and an hour of guessing.
+    Declarative content scripts are injected at PAGE LOAD, so a stale tab has no
+    receiver and `tabs.sendMessage` fails with the same generic sentence Chrome
+    uses for every unreachable context. Telling the user to press F5 is a
+    workaround; injecting the collector is the fix.
     """
     worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
-    assert "RELOAD THE PAGE" in worker, (
-        "a missing content script is not reported as the likely cause"
+    assert "scripting.executeScript" in worker, (
+        "the worker cannot inject the collector into a stale tab"
+    )
+    assert "'content/content.js'" in worker, (
+        "injection does not name the collector file the artifact actually ships"
+    )
+    # And the refusal case must be named, not guessed at.
+    assert "cannot be scripted" in worker, (
+        "an unscrutable page type is not reported as such"
     )
 
 

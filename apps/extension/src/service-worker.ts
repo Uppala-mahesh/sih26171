@@ -182,6 +182,43 @@ async function announce(result: PipelineResult): Promise<void> {
 }
 
 /**
+ * Get page text out of a tab, injecting the collector if it is not there yet.
+ *
+ * Declarative content scripts are injected at PAGE LOAD. A tab that was open
+ * before the extension was installed or reloaded therefore has no receiver, and
+ * `tabs.sendMessage` fails with "Receiving end does not exist" - the same string
+ * it uses for every other routing problem, which is why this cost several rounds
+ * of misdiagnosis.
+ *
+ * Rather than ask the operator to reload the page, inject on demand. The
+ * `scripting` permission is already declared, so this needs no new capability and
+ * no new prompt: the extension already has `<all_urls>`.
+ */
+async function collectFrom(tabId: number): Promise<CollectRequest | undefined> {
+  const ask = async () =>
+    (await chrome.tabs.sendMessage(tabId, { kind: 'COLLECT' })) as unknown;
+
+  try {
+    return (await ask()) as CollectRequest | undefined;
+  } catch (error) {
+    if (!String(error).includes('Receiving end')) throw error;
+    trace('no receiver; injecting the collector into the tab');
+  }
+
+  // Throws for pages an extension may never touch: chrome://*, the Web Store,
+  // other extensions' pages, and file:// without "Allow access to file URLs".
+  // That is a genuine limit of the platform, not a bug, and it is reported as
+  // such rather than as a generic failure.
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ['content/content.js'],
+  });
+  trace('collector injected; asking again');
+
+  return (await ask()) as CollectRequest | undefined;
+}
+
+/**
  * The single user-initiated entry point.
  *
  * The worker asks the CONTENT SCRIPT to collect, and only what the content script
@@ -194,14 +231,10 @@ chrome.action.onClicked.addListener((tab) => {
 
   void (async () => {
     try {
-      trace('clicked: asking the content script to collect');
-      // Typed `void` by @types/chrome, because the response comes from a content
-      // script this module cannot see. Cast through `unknown`, never straight to
-      // CollectRequest: the shape is checked immediately below.
-      const reply = (await chrome.tabs.sendMessage(tabId, {
-        kind: 'COLLECT',
-      })) as unknown;
-      const collected = reply as CollectRequest | undefined;
+      trace('clicked: collecting from the tab');
+      // Cast through `unknown`, never straight to CollectRequest: the shape comes
+      // from a content script this module cannot see, and is checked below.
+      const collected = await collectFrom(tabId);
       trace(`content script answered: ${collected ? collected.kind : 'nothing'}`);
 
       if (!collected || collected.kind !== 'COLLECT' || !Array.isArray(collected.segments)) {
@@ -234,14 +267,18 @@ chrome.action.onClicked.addListener((tab) => {
 
       await announce(result);
     } catch (error) {
-      // The most likely cause of a send failure is a tab that was already open
-      // when the extension was installed or reloaded: content scripts are
-      // injected at page load, not retroactively.
+      // Chrome reports every unreachable context with the same sentence, so the
+      // only way to be useful is to name the CAUSES rather than repeat it. In
+      // order of likelihood: a page type no extension may script at all, and a
+      // genuinely broken build.
       const text = String(error);
       await reportFailure(
-        text.includes('Receiving end')
-          ? 'no content script in this tab — RELOAD THE PAGE (F5) and try again'
-          : `could not observe: ${text}`,
+        /Cannot access|Missing host permission|chrome:\/\//i.test(text)
+          ? 'this page type cannot be scripted (chrome:// pages, the Web Store, ' +
+            'and other extensions\' pages) - open a normal website and try again'
+          : /Receiving end/i.test(text)
+            ? 'no collector in this tab and injection was refused - reload the page (F5)'
+            : `could not observe: ${text}`,
       );
     }
   })();

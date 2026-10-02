@@ -52,6 +52,16 @@ function makeChrome(behaviour) {
           return behaviour.collect();
         },
       },
+      scripting: {
+        executeScript: async () => {
+          seen.injected = true;
+          // Awaited: an async `onInject` that rejects returns a rejected PROMISE.
+          // Called without await it would resolve normally and the simulated
+          // injection failure would never reach the worker - the harness would
+          // then assert against a scenario Chrome would never produce.
+          if (behaviour.onInject) await behaviour.onInject();
+        },
+      },
     },
   };
 }
@@ -90,13 +100,47 @@ const SCENARIOS = [
     },
   },
   {
-    name: 'no content script reports the likely cause, not a generic error',
+    name: 'a tab with no collector is injected into, then read successfully',
+    injected: false,
     async collect() {
-      throw new Error('Could not establish connection. Receiving end does not exist.');
+      if (!this.injected) {
+        throw new Error('Could not establish connection. Receiving end does not exist.');
+      }
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/stale',
+        title: 'Stale tab',
+        segments: [
+          { elementId: 'n0', text: 'Aadhaar 1234 5678 9012', tagName: 'SPAN', ariaLabel: '' },
+        ],
+        frameBlind: false,
+      };
+    },
+    onInject() {
+      this.injected = true;
+    },
+    expect(seen) {
+      assert.ok(seen.injected, 'the collector was never injected into the stale tab');
+      assert.equal(seen.messages.length, 2, 'the tab was not asked again after injection');
+      assert.match(seen.title.at(-1), /redactions: [1-9]/);
+      assert.ok(
+        OK_BADGES.includes(seen.badge.at(-1)),
+        `badge was ${seen.badge.at(-1)}, not one of the four declared states`,
+      );
+    },
+  },
+  {
+    name: 'an unscrutable page type says so instead of blaming the collector',
+    async collect() {
+      throw new Error('Receiving end does not exist.');
+    },
+    async onInject() {
+      // Chrome's real refusal for chrome:// and Web Store pages.
+      throw new Error('Cannot access a chrome:// URL');
     },
     expect(seen) {
       assert.equal(seen.badge.at(-1), 'ERR');
-      assert.match(seen.title.at(-1), /RELOAD THE PAGE/);
+      assert.match(seen.title.at(-1), /cannot be scripted/i);
     },
   },
   {
