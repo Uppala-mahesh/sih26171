@@ -41,24 +41,40 @@ made mechanical.
 
 ## 2. Functional requirement mapping
 
-Rubric column shows the official weight the group feeds.
+> Every path in the "Implementing module" column below is **checked against the
+> filesystem** by `infra/verify_traceability.py`, and
+> `tests/contract/test_traceability_paths.py` fails the build if any of them is
+> absent. Groups with no implementation say so in the column rather than naming
+> a module that was never written.
+>
+> An earlier revision listed paths in the present tense for code that did not
+> exist - `services/vision/sources/dom`, `apps/backend/app/agent/pipeline`,
+> `apps/backend/app/policy/*`, `benchmarks/resource_latency.py`, `packages/telemetry` and
+> eleven others. **4 of 21 resolved.** A traceability matrix pointing at modules
+> that were never built is worse than one that admits it is unfinished, because
+> it converts an incomplete project into a finished-looking one.
 
 | Req group | Design artifact | Implementing module | Verification | Rubric |
 |---|---|---|---|---|
-| `FR-PER-1…7` | `DES-ARCH-001` §5 | `services/vision/sources/dom` · `…/ocr` | `tests/e2e/perception` · `benchmarks/visual_accuracy` | Visual 25% |
-| `FR-VIS-1…7` | `DES-ARCH-001` §6 · `DES-CLASS-001` | `services/vision/sources/ui-classifier` | `benchmarks/visual_accuracy` (macro-F1, confusion matrix) | **Visual 25%** |
-| `FR-PII-1…12` | `REQ-DATA-001` · `DES-CLASS-001` §4 | `apps/backend/app/privacy/detectors/*` + `packages/taxonomy` | `benchmarks/pii_quality` (per-class P/R) | **PII 20%** |
-| `FR-RED-1…8` | `DES-CLASS-001` §5 | `apps/backend/app/privacy/visual_redactor` + re-inspection | `benchmarks/redaction_precision` · IoU harness | **Redaction 20%** |
-| `FR-VLT-1…7` | `DES-CLASS-001` §5 | `apps/backend/app/privacy/vault` | `tests/unit/vault` · storage inspection | Redaction 20% |
-| `FR-EGR-1…7` | `DES-ARCH-001` §7 · `SEC-BOUND-001` | `apps/backend/app/gateway/*` | `tests/contract/egress` · payload inspector | PII 20% |
-| `FR-AGT-1…9` | `DES-STATE-001` · `DES-SEQ-001` | `apps/backend/app/agent/pipeline` + `drivers/*` | `tests/e2e/closed_loop` · `benchmarks/latency` | Latency 15% |
-| `FR-POL-1…8` | `SEC-BOUND-001` · `DES-CLASS-001` §7 | `apps/backend/app/policy/*` | `tests/unit/policy` · injection corpus | Credibility |
-| `FR-EXE-1…6` | `DES-SEQ-001` | `apps/backend/app/execution/*` | `tests/e2e/execution` | Latency 15% |
-| `FR-VER-1…5` | `DES-CLASS-001` §8 | `apps/backend/app/agent/verifier` | `benchmarks/false_completion` | Visual 25% |
-| `FR-CAP-1…9` | `DES-ARCH-001` §6 · `DES-STATE-001` | `services/vision/capability-resolver` | Cross-rung conformance suite · `benchmarks/client_resources` | **Resources 20%** |
-| `FR-UI-1…8` | `DES-ARCH-001` §8 | `apps/extension/sidepanel` · `apps/console` | UI integration tests · demo walkthrough | — |
-| `FR-TEL-1…9` | `DES-DATA-001` | `packages/telemetry` · `benchmarks/` | `benchmarks/scorecard` (generated) | **All weights** |
-| `EI-1…7` | `DES-ARCH-001` §9 · `DES-DATA-001` | `apps/backend/app/api/*` · `packages/contracts` | `tests/contract/*` | Credibility |
+| `FR-PER-1...7` | `DES-ARCH-001` 5, `DES-CLASS-001` | `apps/extension/src/offscreen.ts` (DOM capture, frame blindness) | `tests/contract/test_pipeline_end_to_end.py` | Visual 25% |
+| `FR-VIS-1...7` | `DES-ARCH-001` 6, `DES-CLASS-001` | `packages/vision/classify/role-classifier.ts`, `packages/vision/layout/` | `benchmarks/vision_quality.py`, `tests/contract/test_vision_quality.py` | **Visual 25%** |
+| `FR-PII-1...9` | `REQ-DATA-001`, `DES-CLASS-001` 4 | `apps/backend/app/privacy/detectors.py`, `packages/privacy/detector.ts`, `packages/taxonomy` | `benchmarks/pii_quality.py.py` (per-class P/R) | **PII 20%** |
+| `FR-RED-1...8` | `DES-CLASS-001` 5 | `apps/backend/app/privacy/pixels.py`, `packages/privacy/pixels.ts` | `benchmarks/redaction_precision.py.py`, `tests/contract/test_pixel_redaction.py` | **Redaction 20%** |
+| `FR-VLT-1...7` | `DES-CLASS-001` 5 | `apps/backend/app/privacy/vault.py`, `packages/privacy/vault.ts` | `tests/contract/test_sanitizer_and_vault.py`, `test_vault_parity.py` | Redaction 20% |
+| `FR-EGR-1...7` | `DES-ARCH-001` 7, `SEC-BOUND-001` | `apps/backend/app/gateway/guard.py`, `packages/gateway/guard.ts` | `tests/contract/test_egress_guard.py`, `test_pixel_guard_parity.py` | PII 20% |
+| `FR-AGT-1...9` | `DES-ARCH-001` 7, `DES-STATE-001` | `packages/pipeline/orchestrator.ts` (capture, sanitize, mask, prove, guard) | `tests/contract/test_pipeline_end_to_end.py`, `benchmarks/resource_latency.py` | Latency 15% |
+| `FR-POL-1...8` | `SEC-BOUND-001`, `DES-CLASS-001` 7 | **NOT IMPLEMENTED** - no policy module exists | none | Credibility |
+| `FR-EXE-1...6` | `DES-SEQ-001` | **NOT IMPLEMENTED** - no execution module exists | none | Latency 15% |
+| `FR-VER-1...5` | `DES-CLASS-001` 8 | **NOT IMPLEMENTED** - no verifier module exists | none | Visual 25% |
+| `FR-CAP-1...9` | `DES-ARCH-001` 6, `DES-STATE-001` | `packages/vision/capability/ladder.ts` | `tests/contract/test_capability_ladder.py`, `benchmarks/resource_latency.py` | **Resources 20%** |
+| `FR-UI-1...8` | `DES-ARCH-001` 8 | `apps/extension/src/content.ts` (collector only); no sidepanel, no console | `tests/contract/test_extension_artifact.py` | - |
+| `FR-TEL-1...9` | `REQ-DATA-001` | `benchmarks/` scorecards only; no telemetry module exists | `tests/contract/` scorecard gates | **All weights** |
+| `EI-1...7` | `DES-ARCH-001` 9, `REQ-DATA-001` | `packages/contracts/`, `apps/backend/app/gateway/payload.py` | `tests/contract/test_parity.py`, `test_sanitization_contract.py` | Credibility |
+
+**Four groups have no implementation: `FR-POL`, `FR-EXE`, `FR-VER`, and part of
+`FR-UI`.** They are listed as such rather than mapped to code that does not
+exist. The Rubric column for those groups names the weight they *would* feed, so
+the weight reads as unearned rather than quietly claimed.
 
 ### 2.1 Rubric coverage check
 
@@ -66,11 +82,11 @@ Every weight must map to at least one requirement group and one producing benchm
 
 | Weight | Requirement groups | Producing benchmark | Status |
 |---|---|---|---|
-| **Visual accuracy 25%** | `FR-VIS`, `FR-PER`, `FR-VER` | `benchmarks/visual_accuracy` | ✅ mapped |
-| **PII precision/recall 20%** | `FR-PII`, `FR-EGR` | `benchmarks/pii_quality` | ✅ mapped |
-| **Redaction precision 20%** | `FR-RED`, `FR-VLT` | `benchmarks/redaction_precision` | ✅ mapped |
-| **Client resources 20%** | `FR-CAP`, `NFR-RES` | `benchmarks/client_resources` | ✅ mapped |
-| **Latency 15%** | `FR-AGT`, `FR-EXE`, `NFR-PERF` | `benchmarks/latency` | ✅ mapped |
+| **Visual accuracy 25%** | `FR-VIS`, `FR-PER`, `FR-VER` | `benchmarks/vision_quality.py` | ✅ mapped |
+| **PII precision/recall 20%** | `FR-PII`, `FR-EGR` | `benchmarks/pii_quality.py` | ✅ mapped |
+| **Redaction precision 20%** | `FR-RED`, `FR-VLT` | `benchmarks/redaction_precision.py` | ✅ mapped |
+| **Client resources 20%** | `FR-CAP`, `NFR-RES` | `benchmarks/resource_latency.py` | ✅ mapped |
+| **Latency 15%** | `FR-AGT`, `FR-EXE`, `NFR-PERF` | `benchmarks/resource_latency.py` | ✅ mapped |
 
 **No weight is unmapped.** Contrast with v1, where the 25% visual weight had no implementing
 module at all and two benchmarks measured the wrong stack.
@@ -79,8 +95,8 @@ module at all and two benchmarks measured the wrong stack.
 
 | Req group | Design artifact | Measurement artifact | Budget |
 |---|---|---|---|
-| `NFR-PERF-1…8` | `DES-ARCH-001` §10 | `benchmarks/latency` | p95 ≤ 800 ms / 3.0 s |
-| `NFR-RES-1…9` | `DES-ARCH-001` §11 | `benchmarks/client_resources` | ≤ 15 MB · ΔRSS ≤ 150 MB |
+| `NFR-PERF-1…8` | `DES-ARCH-001` §10 | `benchmarks/resource_latency.py` | p95 ≤ 800 ms / 3.0 s |
+| `NFR-RES-1…9` | `DES-ARCH-001` §11 | `benchmarks/resource_latency.py` | ≤ 15 MB · ΔRSS ≤ 150 MB |
 | `NFR-REL-1…7` | `DES-STATE-001` | Fault-injection + fuzz harnesses | Zero uncaught exceptions |
 | `NFR-SEC-1…7` | `SEC-THREAT-001` · `SEC-BOUND-001` | `tests/contract/security` · injection corpus | Zero escalations |
 | `NFR-PORT-1…5` | `DES-ARCH-001` §6 | Cross-rung + cross-version CI | Identical verdicts |
@@ -98,9 +114,9 @@ did you actually fix them?"*
 
 | # | v1 defect (verified in the Phase 1 audit) | Closing requirement | Proving artifact |
 |---|---|---|---|
-| **G-1** | Python engine detected **none** of Aadhaar / PAN / UPI / IFSC / OTP; `EntityType` could not represent them | `FR-PII-1` · `REQ-DATA-001` | Cross-runtime parity test · `benchmarks/pii_quality` |
+| **G-1** | Python engine detected **none** of Aadhaar / PAN / UPI / IFSC / OTP; `EntityType` could not represent them | `FR-PII-1` · `REQ-DATA-001` | Cross-runtime parity test · `benchmarks/pii_quality.py` |
 | **G-2** | `is_sanitized=True` set unconditionally; a 1×1 failed image accepted as sanitized | **`FR-RED-4`** | Under-sized mask detected → artefact rejected |
-| **G-3** | **No UI-element understanding** — the 25% weight had no implementing module | `FR-VIS-1…7` | `benchmarks/visual_accuracy` macro-F1 + confusion matrix |
+| **G-3** | **No UI-element understanding** — the 25% weight had no implementing module | `FR-VIS-1…7` | `benchmarks/vision_quality.py` macro-F1 + confusion matrix |
 | **G-4** | No WebGPU / ONNX-Runtime-Web / Transformers.js anywhere | `FR-CAP-1` | Capability ladder demo · rung reported in telemetry |
 | **G-5** | No checksum validation → 13–19 digit runs matched as cards | `FR-PII-2` · `REQ-DATA-001` §4 | Non-Luhn fixture yields zero `CREDIT_CARD` detections |
 | **G-6** | Fail-closed path **masqueraded as success** | **`FR-CAP-4`** | Every rung forced to fail → no `SANITIZED` artefact produced |
