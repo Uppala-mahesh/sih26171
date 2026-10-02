@@ -37,6 +37,30 @@ const OFFSCREEN_PATH = 'offscreen/offscreen.html';
 const OFFSCREEN_READY_TIMEOUT_MS = 5_000;
 
 /**
+ * Breadcrumbs.
+ *
+ * This extension has produced two identical-looking "Receiving end does not
+ * exist" errors from two different causes, and guessing twice was not good
+ * enough. Every await boundary is now labelled, so the LAST breadcrumb printed
+ * before the failure names the step that failed.
+ *
+ * `chrome://extensions` -> Errors, or the service-worker console, will show them.
+ */
+let step = 0;
+function trace(message: string): void {
+  step += 1;
+  console.log(`[sih ${step}] ${message}`);
+}
+
+// A bare "Uncaught (in promise)" hides the step that produced it. This converts
+// any escaping rejection into a trace, so the last line printed is always the
+// culprit rather than a generic Chrome string.
+self.addEventListener('unhandledrejection', (event) => {
+  console.error('[sih] unhandled rejection:', event.reason);
+  event.preventDefault();
+});
+
+/**
  * Chrome permits ONE offscreen document per extension, so reuse is a
  * correctness requirement rather than an optimisation - a second
  * `createDocument` call throws.
@@ -90,9 +114,13 @@ chrome.runtime.onMessage.addListener(
 );
 
 async function ensureOffscreen(): Promise<void> {
+  trace('checking whether an offscreen document already exists');
   const alreadyOpen = await chrome.offscreen.hasDocument();
+  trace(`offscreen already open: ${alreadyOpen}`);
+
   if (!alreadyOpen) {
     if (!creating) {
+      trace('creating the offscreen document');
       creating = chrome.offscreen
         .createDocument({
           url: OFFSCREEN_PATH,
@@ -101,16 +129,26 @@ async function ensureOffscreen(): Promise<void> {
             'Read page text and rasterise page pixels on-device so sensitive ' +
             'data can be redacted before anything leaves the browser.',
         })
-        .then(() => undefined);
+        .then(() => {
+          trace('offscreen document created');
+        });
     }
     try {
       await creating;
+    } catch (error) {
+      // A second createDocument throws. Reusing the existing one is correct, not
+      // an error condition, so it is recovered rather than surfaced.
+      trace(`createDocument rejected: ${String(error)}`);
+      const stillOpen = await chrome.offscreen.hasDocument();
+      if (!stillOpen) throw error;
     } finally {
       creating = null;
     }
   }
-  // The document exists; now wait for its module to have run.
+
+  trace('waiting for Z1 to announce it is listening');
   await awaitOffscreenReady();
+  trace('Z1 handshake complete');
 }
 
 function observationId(): string {
@@ -125,7 +163,9 @@ async function observe(
   collected: CollectRequest,
   taskDescription: string,
 ): Promise<ObserveResponse> {
+  trace('opening Z1');
   await ensureOffscreen();
+  trace('Z1 is open; sending OBSERVE');
 
   const request: ObserveRequest = {
     kind: 'OBSERVE',
@@ -137,7 +177,9 @@ async function observe(
   // `chrome.runtime.sendMessage` from the worker targets EXTENSION PAGES, which
   // is the offscreen document. `chrome.tabs.sendMessage` targets CONTENT
   // SCRIPTS. Mixing the two is how you get "Receiving end does not exist".
-  return (await chrome.runtime.sendMessage(request)) as ObserveResponse;
+  const reply = (await chrome.runtime.sendMessage(request)) as unknown;
+  trace('Z1 returned a response');
+  return reply as ObserveResponse;
 }
 
 /**
@@ -209,6 +251,7 @@ chrome.action.onClicked.addListener((tab) => {
 
   void (async () => {
     try {
+      trace('clicked: asking the content script to collect');
       // Typed `void` by @types/chrome, because the response comes from a content
       // script this module cannot see. Cast through `unknown`, never straight to
       // CollectRequest: the shape is checked immediately below.
@@ -216,12 +259,14 @@ chrome.action.onClicked.addListener((tab) => {
         kind: 'COLLECT',
       })) as unknown;
       const collected = reply as CollectRequest | undefined;
+      trace(`content script answered: ${collected ? collected.kind : 'nothing'}`);
 
       if (!collected || collected.kind !== 'COLLECT') {
         await reportFailure('the content script returned no collection');
         return;
       }
 
+      trace(`collected ${collected.segments.length} text segment(s)`);
       const result = await observe(collected, 'summarise the active page');
       await announce(result);
     } catch (error) {
