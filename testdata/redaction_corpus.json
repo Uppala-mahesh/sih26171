@@ -1,0 +1,107 @@
+{
+  "version": "1.0.0",
+  "generated_by": "benchmarks/redaction_precision.py",
+  "cases": [
+    {
+      "id": "redact-01",
+      "description": "One high-value identifier surrounded by ordinary prose.",
+      "fields": [
+        [
+          "Your Aadhaar number",
+          ""
+        ],
+        [
+          "999999990019",
+          "AADHAAR"
+        ],
+        [
+          "is registered to this account",
+          ""
+        ],
+        [
+          "Contact parker.sterling@example.test",
+          "EMAIL"
+        ],
+        [
+          "or call +91 9876543210",
+          "MOBILE_IN"
+        ]
+      ]
+    },
+    {
+      "id": "redact-02",
+      "description": "Payment details including a tokenised card.",
+      "fields": [
+        [
+          "Card on file",
+          ""
+        ],
+        [
+          "4532 0151 1283 0366",
+          "CREDIT_CARD"
+        ],
+        [
+          "Verification code",
+          ""
+        ],
+        [
+          "847291",
+          "OTP"
+        ],
+        [
+          "Billing PIN code",
+          ""
+        ],
+        [
+          "560001",
+          "POSTAL_CODE_IN"
+        ]
+      ]
+    },
+    {
+      "id": "redact-03",
+      "description": "Prose only. Nothing here should be redacted at all.",
+      "fields": [
+        [
+          "Welcome back",
+          ""
+        ],
+        [
+          "Your order shipped yesterday",
+          ""
+        ],
+        [
+          "Total 4,200 rupees",
+          ""
+        ],
+        [
+          "Reference 7f3a2b1c",
+          ""
+        ],
+        [
+          "Thanks for banking with us",
+          ""
+        ]
+      ]
+    },
+    {
+      "id": "redact-04",
+      "description": "Box deliberately driven past the frame edge. Exercises clamp_box, so the IoU metric is not measuring a trivial 1.0.",
+      "fields": [
+        [
+          "Edge case",
+          ""
+        ],
+        [
+          "999999990019",
+          "AADHAAR:oob"
+        ]
+      ]
+    }
+  ],
+  "coverage": {
+    "cases": 4,
+    "labelled_values": 7,
+    "prose_only_cases": 1
+  }
+}
