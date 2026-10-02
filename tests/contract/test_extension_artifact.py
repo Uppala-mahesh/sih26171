@@ -139,11 +139,44 @@ def test_the_offscreen_document_is_gone() -> None:
 
 
 def test_extension_declares_no_network_egress() -> None:
-    """connect-src 'none' means there is no code path to a remote origin."""
-    csp = ARTIFACT_MANIFEST_CSP = json.loads(
-        (ARTIFACT / "manifest.json").read_text(encoding="utf-8")
-    )["content_security_policy"]["extension_pages"]
-    assert "connect-src 'none'" in ARTIFACT_MANIFEST_CSP
+    """The egress guarantee is a property of the CODE, not of a CSP string.
+
+    This test used to assert `connect-src 'none'` was present. That directive is
+    NOT valid in an MV3 `extension_pages` policy: Chrome rejects such a manifest
+    outright at install time with "Invalid value for
+    'content_security_policy.extension_pages'". Edge accepted the same manifest,
+    so a local run looked perfectly healthy while the extension would not load in
+    Chrome at all.
+
+    The guarantee is therefore asserted where it can actually hold: no network API
+    appears anywhere in the shipped code. That is stronger than the CSP string was
+    - the CSP forbade connections the code never attempted anyway.
+    """
+    banned = ("fetch(", "XMLHttpRequest", "WebSocket", "EventSource", "navigator.sendBeacon", "importScripts")
+    offenders = []
+    for path in ARTIFACT.rglob("*.js"):
+        source = path.read_text(encoding="utf-8")
+        for needle in banned:
+            if needle in source:
+                offenders.append(f"{path.relative_to(ARTIFACT)} references {needle}")
+    assert not offenders, f"network egress is reachable in the artifact: {offenders}"
+
+
+def test_the_csp_uses_only_directives_mv3_permits() -> None:
+    """MV3 permits exactly `script-src` and `object-src` for extension pages.
+
+    Any other directive is an install-time manifest error in Chrome, which reads
+    as "the extension will not load" rather than as a CSP problem. This is
+    asserted so the exact mistake that caused a long debugging detour cannot come
+    back unnoticed.
+    """
+    manifest = json.loads((ARTIFACT / "manifest.json").read_text(encoding="utf-8"))
+    csp = manifest["content_security_policy"]["extension_pages"]
+    directives = [d.split()[0] for d in csp.split(";") if d.strip()]
+    permitted = {"script-src", "object-src"}
+    assert set(directives) <= permitted, (
+        f"MV3 extension_pages permits only {sorted(permitted)}; found {directives}"
+    )
 
 
 def test_nothing_is_exposed_to_web_pages() -> None:
