@@ -53,6 +53,21 @@ fs.writeFileSync(
    </body></html>`,
 );
 
+// A SECOND page that deliberately paints things. The whole fix hinges on this
+// count being right, and a mock cannot prove a DOM query behaves; only a real
+// layout can.
+const painted = path.join(profile, 'painted-page.html');
+fs.writeFileSync(
+  painted,
+  `<!doctype html><html><head><title>Painted</title>
+   <style>body{background-image:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)}</style>
+   </head><body>
+   <p>Nothing sensitive in the text.</p>
+   <canvas id="c" width="10" height="10"></canvas>
+   <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="a">
+   </body></html>`,
+);
+
 const chrome = spawn(
   BROWSER,
   [
@@ -197,6 +212,26 @@ console.log('chrome://   :', await probeEventually(`(async()=>{
   try { const r = await chrome.tabs.sendMessage(t.id,{kind:'COLLECT'});
         return 'OK segments=' + (r&&r.segments?r.segments.length:'null'); }
   catch(e){ return 'THREW: ' + e.message; }
+})()`));
+// THE FIX, verified against a real DOM rather than a mock: this count decides
+// SANITIZED vs WITHHOLD, so BOTH directions have to hold in a real browser.
+console.log('\n--- visualSurfaces, from the real content script ---');
+console.log('plain page   :', await probeEventually(`(async()=>{
+  const t=(await chrome.tabs.query({})).find(x=>String(x.url).includes('test-page'));
+  if(!t) return 'plain tab not found';
+  const r=await chrome.tabs.sendMessage(t.id,{kind:'COLLECT'});
+  return 'visualSurfaces=' + JSON.stringify(r.visualSurfaces) + ' segments=' + r.segments.length;
+})()`));
+
+console.log('painted page :', await probeEventually(`(async()=>{
+  const url = ${JSON.stringify('file:///' + painted.replace(/\\/g, '/'))};
+  const w = await chrome.windows.create({ url });
+  await new Promise(r=>setTimeout(r,1500));
+  const t = (await chrome.tabs.query({})).find(x=>String(x.url).includes('painted-page'));
+  if(!t){ await chrome.windows.remove(w.id); return 'painted tab not found'; }
+  const r = await chrome.tabs.sendMessage(t.id,{kind:'COLLECT'});
+  await chrome.windows.remove(w.id);
+  return 'visualSurfaces=' + JSON.stringify(r.visualSurfaces) + ' segments=' + r.segments.length;
 })()`));
 
 console.log('\n--- worker console ---');
