@@ -121,13 +121,37 @@ def design() -> dict:
 def test_every_cited_design_artifact_exists(design: dict) -> None:
     """The design column was fabricating too: 4 cited, 1 existed.
 
-    `services/`-scale claims are how a project looks engineered while having no
-    design at all. DES-CLASS-001 and DES-SEQ-001 were cited across eight rows and
-    have never been written; the matrix now says NOT YET WRITTEN instead.
+    A missing DESIGN artifact is the one that lets a project look engineered while
+    having no design at all, so it is checked separately from module paths.
     """
-    assert not design["missing"], (
-        f"REQ-RTM-001 cites design artifacts that do not exist: "
-        f"{design['missing_artifacts']}. Write them or mark them absent."
+    assert design["missing"] == 0, (
+        f"cited design artifacts do not exist: {design['missing_artifacts']}"
+    )
+
+
+def test_no_design_artifact_is_merely_acknowledged_as_unwritten(design: dict) -> None:
+    """Design debt must be VISIBLE and must not be allowed to persist.
+
+    ``verify_traceability`` deliberately does not treat a "NOT YET WRITTEN" cell as
+    a citation - demanding the file would punish the matrix for being honest. But
+    excluding it entirely meant the debt vanished: ``missing: 0`` was reported while
+    two artifacts were owed, which is a clean bill of health for a known hole.
+
+    So disclosed-but-unwritten artifacts are now counted separately. This test
+    asserts that count is zero, which converts "we know we owe design" into a
+    failing build. It must be satisfied by writing the document, never by editing
+    this test.
+
+    History: DES-CLASS-001 and DES-SEQ-001 were cited across eight rows and had
+    never been written. The matrix was corrected to say NOT YET WRITTEN - which is
+    honest, and which also made the debt invisible to `verify_traceability`, since
+    `missing` counts only real citations. Both are now written; the count is a
+    standing guard, not a one-off.
+    """
+    assert design["acknowledged_unwritten"] == 0, (
+        "design artifacts are acknowledged as unwritten and are therefore not "
+        f"tracked: {design['acknowledged_unwritten_artifacts']}. Write them, or cite "
+        "the design that actually covers the requirement."
     )
 
 
@@ -154,16 +178,31 @@ def test_a_disclosure_cell_is_not_a_citation() -> None:
     assert not _is_disclosure_cell("`REQ-DATA-001`, `DES-STATE-001` 4")
 
 
-def test_the_absent_design_artifacts_are_named_as_absent() -> None:
-    """They must stay visible, or the matrix quietly implies they exist."""
+def test_the_previously_absent_design_artifacts_are_now_real(design: dict) -> None:
+    """They must not vanish from the matrix entirely.
+
+    This test originally asserted that `DES-CLASS-001` and `DES-SEQ-001` stayed
+    marked NOT YET WRITTEN, because both were cited across eight rows and had never
+    been written - a `services/`-scale claim over an empty document. Both have now
+    been written, so the durable assertion is the opposite: they must appear as
+    REAL citations and must exist on disk.
+
+    Checking for the disclosure marker would have made the test fail the moment the
+    project did the right thing.
+    """
     text = (
         ROOT / "docs" / "01-requirements" / "REQ-RTM-001-requirements-traceability-matrix.md"
     ).read_text(encoding="utf-8")
-    for absent in ("DES-CLASS-001", "DES-SEQ-001"):
-        assert absent in text, f"{absent} vanished from the matrix entirely"
-        assert "NOT YET WRITTEN" in text, (
-            "no design artifact is marked absent; the gaps must be visible"
+    for artifact in ("DES-CLASS-001", "DES-SEQ-001"):
+        assert artifact in text, f"{artifact} vanished from the matrix entirely"
+        assert artifact in design["present_artifacts"], (
+            f"{artifact} is cited as though it exists, but it is not on disk"
         )
+    # Once written, neither may be cited through a disclosure cell.
+    assert "NOT YET WRITTEN" not in text, (
+        "an artifact is still marked NOT YET WRITTEN, yet the debt counter reads "
+        "zero - the matrix and the verifier disagree"
+    )
 
 
 def test_cited_design_artifacts_are_a_subset_of_what_exists() -> None:

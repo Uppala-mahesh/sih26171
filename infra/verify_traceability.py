@@ -44,6 +44,14 @@ PATH_IN_BACKTICKS = re.compile(r"`([A-Za-z0-9_./*-]+)`")
 
 DESIGN_ARTIFACT = re.compile(r"DES-[A-Z]+-\d+")
 
+#: Design artifacts the RTM names in a disclosure cell ("NOT YET WRITTEN").
+#:
+#: Populated by :func:`claimed_design_artifacts`. A disclosure must not become a
+#: demand for a file, but it must not become invisible either: an artifact nobody
+#: is writing is a gap in the SDLC, and reporting `missing: 0` while two are owed
+#: is a clean bill of health for a known hole.
+_DISCLOSED_DESIGN_ARTIFACTS: set[str] = set()
+
 # Words that mark a cell as a deliberate non-implementation rather than a claim.
 NON_IMPLEMENTED_MARKERS = ("not started", "not implemented", "none", "n/a", "-")
 
@@ -151,6 +159,7 @@ def claimed_design_artifacts() -> list[str]:
         raise SystemExit("could not locate the end of REQ-RTM-001 section 2")
     section = text[start : min(candidates)]
     found: list[str] = []
+    disclosed: list[str] = []
     for line in section.splitlines():
         if not line.strip().startswith("|"):
             continue
@@ -161,11 +170,21 @@ def claimed_design_artifacts() -> list[str]:
         # citation. Naming `DES-CLASS-001 NOT YET WRITTEN` must not make the
         # verifier demand the file - that is the same trap as naming a missing
         # module in prose, and it is why the marker is checked explicitly.
+        #
+        # But excluding it must not make the debt INVISIBLE. The previous version
+        # skipped the row entirely, so `missing: 0` was reported while two design
+        # artifacts were owed - a clean bill of health for a known gap. Disclosed
+        # artifacts are now collected separately and reported as their own line.
         if _is_disclosure_cell(design_cell):
+            for match in DESIGN_ARTIFACT.finditer(line):
+                if match.group(0) not in disclosed:
+                    disclosed.append(match.group(0))
             continue
         for match in DESIGN_ARTIFACT.finditer(line):
             if match.group(0) not in found:
                 found.append(match.group(0))
+    _DISCLOSED_DESIGN_ARTIFACTS.clear()
+    _DISCLOSED_DESIGN_ARTIFACTS.update(disclosed)
     return found
 
 
@@ -176,12 +195,27 @@ def verify_design() -> dict:
     for artifact in cited:
         matches = list((ROOT / "docs").rglob(f"{artifact}*.md"))
         (present if matches else missing).append(artifact)
+
+    # Disclosed-but-unwritten artifacts are reported SEPARATELY from `missing`.
+    #
+    # They are not `missing`, because the matrix never claimed them - demanding the
+    # file would punish the RTM for being honest. But folding them into `cited`
+    # would also be wrong: that field means "artifacts this design rests on", and an
+    # artifact nobody has written cannot bear weight. So they get their own line and
+    # are never silently zero.
+    owed = sorted(
+        a
+        for a in _DISCLOSED_DESIGN_ARTIFACTS
+        if not list((ROOT / "docs").rglob(f"{a}*.md"))
+    )
     return {
         "cited": len(cited),
         "present": len(present),
         "missing": len(missing),
         "missing_artifacts": sorted(missing),
         "present_artifacts": sorted(present),
+        "acknowledged_unwritten": len(owed),
+        "acknowledged_unwritten_artifacts": owed,
     }
 
 
