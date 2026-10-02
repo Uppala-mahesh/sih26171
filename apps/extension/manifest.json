@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "SIH26171 Privacy Agent",
+  "version": "2.0.0",
+  "description": "Observes the page, redacts sensitive data on-device, and refuses to emit anything it cannot prove is clean.",
+  "minimum_chrome_version": "116",
+
+  "permissions": ["offscreen", "storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_title": "SIH26171 Privacy Agent"
+  },
+
+  "web_accessible_resources": [],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'none'"
+  }
+}

@@ -6,12 +6,15 @@
   "description": "SIH26171 - Privacy-preserving browser agent with on-device visual perception",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:extension": "tsc --noEmit -p tsconfig.extension.json",
     "generate:taxonomy": "python infra/generate_taxonomy.py",
     "check:taxonomy": "python infra/generate_taxonomy.py --check",
     "build:parity": "node infra/build-parity.cjs",
-    "verify": "npm run typecheck && npm run check:taxonomy && npm run build:parity"
+    "build:extension": "node infra/build-extension.cjs",
+    "verify": "npm run typecheck && npm run check:taxonomy && npm run build:parity && npm run build:extension"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.287",
     "typescript": "^5.8.3"
   }
 }

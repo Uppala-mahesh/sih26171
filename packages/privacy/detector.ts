@@ -13,7 +13,11 @@
  * meaningful if something actually compares the two.
  */
 
-import { ENTITIES, PATTERN_BACKED, type EntitySpec } from '../taxonomy/generated/entities';
+import {
+  ENTITIES,
+  PATTERN_BACKED,
+  type EntitySpec,
+} from '../taxonomy/generated/entities.js';
 import {
   entropyMeets,
   ifscValid,
@@ -22,7 +26,7 @@ import {
   panValid,
   upiVpaValid,
   verhoeffValid,
-} from './validators';
+} from './validators.js';
 
 export type Outcome = 'ACCEPTED' | 'UNCERTAIN';
 

@@ -95,9 +95,10 @@ sih-agent-v2/
 |---|---|
 | **Phase 0 — Inception** | ✅ **Complete** — Charter · Reuse Ledger · Executive Brief · Isolation Protocol · `CR-001` · `CR-002` |
 | **Phase 1 — Requirements** | ✅ **Complete** — 155 requirements across 5 artifacts · *awaiting Product Owner sign-off on Gate G1* |
-| **Phase 2 — Design** | ⬜ **Next** — C4 architecture · class model · sequences · data contracts · state machines · threat model |
-| **Sprint 0 — Design artifacts + backlog** | ⬜ Pending Phase 2 |
-| **Production code** | **None written** — correct for this phase |
+| **Phase 2 — Design** | ✅ **Complete** — C4 architecture · privacy boundary · threat model |
+| **Sprint 1 — Privacy core** | ✅ **Complete** — detector · vault · sanitizer · pixel redactor · egress guard, on **both** Python and TypeScript, parity-locked |
+| **Sprint 2 — Runtime** | ✅ **Complete** — MV3 Chrome extension · offscreen Z1 · end-to-end pipeline |
+| **Production code** | **Shipping** — 246 tests, 2 measured benchmarks, 1 loadable extension |
 
 ### 6.1 The requirements baseline
 
@@ -119,6 +120,80 @@ Per `CR-002`, the submission has two **deliberate** components:
 | Component | Repository | Role |
 |---|---|---|
 | Working prototype | `../sih26171/` | Owns the live demonstration |
+
+
+---
+
+## 7. Build and run
+
+```bash
+npm install
+npm run verify        # typecheck + taxonomy check + parity build + extension build
+```
+
+**Load the extension**
+
+1. `chrome://extensions` → enable **Developer mode**
+2. **Load unpacked** → select `dist-extension/`
+
+No bundler is used. The sources already use explicit `.js` import specifiers, so
+Chrome's own module loader resolves them — **the code that runs in the browser is
+the code in this repository, unmodified.** A bundler would be another program
+rewriting the privacy core on its way to disk.
+
+**Run the tests**
+
+```bash
+python -m pytest tests/contract -q
+```
+
+**Run the benchmarks**
+
+```bash
+python benchmarks/pii_quality.py            # detection quality
+python benchmarks/redaction_precision.py   # redaction quality
+```
+
+Both exit non-zero if a target is missed, so they work as CI gates.
+
+## 8. Where the privacy boundary actually is
+
+```
+page DOM ──content script──▶ service worker ──▶ OFFSCREEN DOCUMENT (Z1)
+ (untrusted)  collector only    coordinator      DOM + pixels + vault + guard
+```
+
+| Context | Can reach | Cannot reach |
+|---|---|---|
+| **Content script** | page text | vault, detector, guard — no imports at all |
+| **Service worker** | Z1 by message only | any privacy module; imports only `./messages.js` |
+| **Offscreen (Z1)** | everything | nothing leaves raw |
+
+Raw page content exists on exactly **one** side of the Z1 boundary. That is what
+makes "no outbound payload can hold raw content" a structural property rather
+than a review promise — and it is asserted by
+`tests/contract/test_extension_artifact.py`, not merely documented.
+
+## 9. Measured results
+
+Numbers below are produced by the committed harnesses. Nothing here is asserted.
+
+| Claim | Measurement | Harness |
+|---|---|---|
+| PII detection | precision **100%**, recall **100%** (strict) | `benchmarks/pii_quality.py` |
+| PII redaction | **0.0000%** residual leakage | `benchmarks/redaction_precision.py` |
+| Pixel masking | **0** survivors, worst IoU **0.917** | `benchmarks/redaction_precision.py` |
+| Utility | **1.0000** preserved outside masks | `benchmarks/redaction_precision.py` |
+| Cross-runtime parity | Python ≡ TypeScript, 4 suites | `tests/contract/test_*_parity.py` |
+| End-to-end | 6 scenarios, 3 must **withhold** | `tests/contract/test_pipeline_end_to_end.py` |
+
+**Known gaps, stated rather than hidden.** The vision classifier is not built, so
+the 25% visual-accuracy weight is unmeasured. Client-resource and latency budgets
+are not yet instrumented. The extension's pixel route currently emits empty mask
+boxes because detection boxes depend on the classifier (tracked as `CR-003`);
+the pipeline treats that honestly and will not claim `SANITIZED` without at least
+one verified frame.
+
 | Engineering showcase | *(this repository)* | Owns the SDLC artifacts and the verifiable evidence |
 
 The **evidence bridge** (`CR-002` §5) binds them: for every claim the demonstration makes, this

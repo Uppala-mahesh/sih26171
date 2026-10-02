@@ -87,3 +87,9 @@ testdata/**/*.rendered.*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ─── Built Chrome artefact ───
+# dist-extension/ is a reproducible output of `npm run build:extension`, never a
+# source. It is gitignored because a committed build silently diverges from the
+# sources, and anyone loading a stale build would be reviewing the wrong thing.
+dist-extension/

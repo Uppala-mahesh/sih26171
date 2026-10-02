@@ -1,0 +1,21 @@
+{
+  "//": "Emit the loadable Chrome MV3 extension as native ES modules. No bundler: the sources already use explicit .js specifiers, so Chrome's own module loader resolves them. A bundler would add a build dependency and a place for the privacy core to be mangled.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist-extension",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["chrome"]
+  },
+  "include": ["packages/**/*.ts", "apps/extension/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "dist-extension", "tests"]
+}
