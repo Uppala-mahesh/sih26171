@@ -1,0 +1,162 @@
+{
+  "version": "1.0.0",
+  "generated_by": "testdata/build_corpus.py",
+  "scope_note": "Covers the 16 pattern-backed entities. PASSWORD, PERSON_NAME, ADDRESS and FACE_IMAGE are structural or model-backed and are NOT measured here.",
+  "coverage": {
+    "cases": 7,
+    "positive_spans": 17,
+    "entities_measured": 16,
+    "entities_not_measured": 4
+  },
+  "cases": [
+    {
+      "id": "banking-01",
+      "description": "One of every high-value identifier on a banking account page.",
+      "text": "Account Summary\nAadhaar: 999999990019\nPAN: ABCPH1234F\nUPI: parker@okhdfcbank\nIFSC: HDFC0001234\nEmail: parker.sterling@example.test\nMobile: +91 9876543210\n",
+      "expected": [
+        {
+          "entity": "AADHAAR",
+          "start": 25,
+          "end": 37,
+          "value": "999999990019"
+        },
+        {
+          "entity": "PAN",
+          "start": 43,
+          "end": 53,
+          "value": "ABCPH1234F"
+        },
+        {
+          "entity": "UPI_VPA",
+          "start": 59,
+          "end": 76,
+          "value": "parker@okhdfcbank"
+        },
+        {
+          "entity": "IFSC",
+          "start": 83,
+          "end": 94,
+          "value": "HDFC0001234"
+        },
+        {
+          "entity": "EMAIL",
+          "start": 102,
+          "end": 130,
+          "value": "parker.sterling@example.test"
+        },
+        {
+          "entity": "MOBILE_IN",
+          "start": 139,
+          "end": 153,
+          "value": "+91 9876543210"
+        }
+      ]
+    },
+    {
+      "id": "payments-01",
+      "description": "Payment instruments: two cards plus a one-time code.",
+      "text": "Payment methods\nCard 1: 4532015112830366\nCard 2: 4111111111111111\nOTP: 847291\n",
+      "expected": [
+        {
+          "entity": "CREDIT_CARD",
+          "start": 24,
+          "end": 40,
+          "value": "4532015112830366"
+        },
+        {
+          "entity": "CREDIT_CARD",
+          "start": 49,
+          "end": 65,
+          "value": "4111111111111111"
+        },
+        {
+          "entity": "OTP",
+          "start": 71,
+          "end": 77,
+          "value": "847291"
+        }
+      ]
+    },
+    {
+      "id": "developer-01",
+      "description": "Machine credentials on a developer console.",
+      "text": "Service configuration\nAPI key: sk-abcdefghijklmnopqrstuvwxyz1234567890\nSession token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk\nShared secret: aB3xK9mQ2pL7zR4tY6uW8\n",
+      "expected": [
+        {
+          "entity": "API_KEY",
+          "start": 31,
+          "end": 70,
+          "value": "sk-abcdefghijklmnopqrstuvwxyz1234567890"
+        },
+        {
+          "entity": "JWT",
+          "start": 86,
+          "end": 177,
+          "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        },
+        {
+          "entity": "SECRET_GENERIC",
+          "start": 193,
+          "end": 214,
+          "value": "aB3xK9mQ2pL7zR4tY6uW8"
+        }
+      ]
+    },
+    {
+      "id": "records-01",
+      "description": "Institutional records where context carries the meaning.",
+      "text": "Student record\nAccount no 123456789012\nHall ticket: 1608-22-737-001\nDate of birth: 14/03/1998\nPIN code: 560001\n",
+      "expected": [
+        {
+          "entity": "BANK_ACCOUNT",
+          "start": 26,
+          "end": 38,
+          "value": "123456789012"
+        },
+        {
+          "entity": "STUDENT_ID",
+          "start": 52,
+          "end": 67,
+          "value": "1608-22-737-001"
+        },
+        {
+          "entity": "DOB",
+          "start": 83,
+          "end": 93,
+          "value": "14/03/1998"
+        },
+        {
+          "entity": "POSTAL_CODE_IN",
+          "start": 104,
+          "end": 110,
+          "value": "560001"
+        }
+      ]
+    },
+    {
+      "id": "decoys-01",
+      "description": "Order ids, epochs and prices. NONE may be reported as a card.",
+      "text": "Order history\nOrder ID: 1234567890123\nReference: 9999999999999\nCreated at epoch 1700000000\nUpdated at epoch 1712345678\nTotal 4,200 for 150 items\nChecksum 7f3a2b1c9e8d4c5b\n",
+      "expected": []
+    },
+    {
+      "id": "decoys-02",
+      "description": "Prose whose shape resembles an identifier but is not one.",
+      "text": "Support notes\nPinterest board 123456789 was pinned by a colleague\nInvoice 00012345 was issued in March\nOur office is at 221B Baker Road\n",
+      "expected": []
+    },
+    {
+      "id": "second-aadhaar-01",
+      "description": "A second distinct Aadhaar value - guards against single-value bias.",
+      "text": "Duplicate check\nRegistered Aadhaar: 123456789010\n",
+      "expected": [
+        {
+          "entity": "AADHAAR",
+          "start": 36,
+          "end": 48,
+          "value": "123456789010"
+        }
+      ]
+    }
+  ]
+}

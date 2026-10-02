@@ -38,6 +38,13 @@ const SENSITIVITY_RANK: Record<string, number> = {
   CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3,
 };
 const TIER_RANK: Record<string, number> = { T1: 0, T2: 1, T3: 2 };
+// Outcome outranks sensitivity when two candidates cover the SAME characters.
+// An ACCEPTED finding is confirmed; an UNCERTAIN one is a guess. Reporting the
+// guess because its entity happens to be CRITICAL mislabels perfectly correct
+// detections. This costs nothing in safety: overlapping redactions cover the
+// same characters, so the better-confirmed label changes the LABEL, never the
+// COVERAGE.
+const OUTCOME_RANK: Record<string, number> = { ACCEPTED: 0, UNCERTAIN: 1 };
 
 export interface Finding {
   readonly entityId: string;
@@ -143,6 +150,7 @@ export function resolveOverlaps(findings: readonly Finding[]): Finding[] {
   const ordered = [...findings].sort(
     (a, b) =>
       a.start - b.start ||
+      (OUTCOME_RANK[a.outcome] ?? 9) - (OUTCOME_RANK[b.outcome] ?? 9) ||
       (SENSITIVITY_RANK[a.sensitivity] ?? 9) - (SENSITIVITY_RANK[b.sensitivity] ?? 9) ||
       (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9),
   );

@@ -123,7 +123,13 @@ entities:
     tier: T3
     validator: none
     requires_context: true
-    context_cues: [otp, code, verification, pin, token, 2fa]
+    # NOTE: bare "code" and bare "pin" were REMOVED from this cue list by the
+    # pii_quality benchmark, which measured POSTAL_CODE_IN recall at 0%. On the
+    # line "PIN code: 560001" both cues matched, the CRITICAL entity won overlap
+    # resolution, and an Indian postal code was reported as a one-time passcode.
+    # The specific phrases remain; the ambiguous ones do not.
+    context_cues: [otp, one time password, one-time password, verification code,
+                   verification pin, verify, token, 2fa, passcode, two-factor]
     placeholder: OTP
     pattern: '\b\d{4,8}\b'
 
@@ -153,7 +159,11 @@ entities:
     requires_context: true
     context_cues: [secret, token, key, password, api_key, apikey, credential]
     placeholder: SECRET
-    pattern: '\b[A-Za-z0-9+/]{24,}={0,2}\b'
+    # Minimum length lowered from 24 to 16. The pii_quality benchmark measured
+    # SECRET_GENERIC recall at 0% because every realistic test secret was
+    # shorter than 24 characters. Length is a cheap pre-filter; the entropy floor
+    # and the context requirement do the real work.
+    pattern: '\b[A-Za-z0-9+/]{16,}={0,2}\b'
 
   - id: PERSON_NAME
     display: "Person Name"

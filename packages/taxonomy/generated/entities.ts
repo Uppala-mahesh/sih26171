@@ -158,7 +158,7 @@ export const ENTITIES: readonly EntitySpec[] = [
     tier: "T3",
     validator: "none",
     requiresContext: true,
-    contextCues: ["otp", "code", "verification", "pin", "token", "2fa"],
+    contextCues: ["otp", "one time password", "one-time password", "verification code", "verification pin", "verify", "token", "2fa", "passcode", "two-factor"],
     placeholder: "OTP",
     pattern: "\\b\\d{4,8}\\b",
   },
@@ -193,7 +193,7 @@ export const ENTITIES: readonly EntitySpec[] = [
     requiresContext: true,
     contextCues: ["secret", "token", "key", "password", "api_key", "apikey", "credential"],
     placeholder: "SECRET",
-    pattern: "\\b[A-Za-z0-9+/]{24,}={0,2}\\b",
+    pattern: "\\b[A-Za-z0-9+/]{16,}={0,2}\\b",
   },
   {
     id: "PERSON_NAME",

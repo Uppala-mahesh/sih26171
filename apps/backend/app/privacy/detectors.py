@@ -52,6 +52,16 @@ SECRET_ENTROPY_FLOOR = 3.2
 # Sensitivity priority, used to resolve overlapping candidates.
 _SENSITIVITY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 _TIER_RANK = {"T1": 0, "T2": 1, "T3": 2}
+# Outcome outranks sensitivity when two candidates cover the SAME characters.
+# An ACCEPTED finding is confirmed; an UNCERTAIN one is a guess. Reporting the
+# guess because its entity happens to be CRITICAL mislabels perfectly correct
+# detections - the pii_quality benchmark measured POSTAL_CODE_IN recall at 0%
+# because "PIN code: 560001" was labelled OTP on sensitivity alone.
+#
+# This costs nothing in safety: overlapping redactions cover the same
+# characters, so choosing the better-confirmed label changes the LABEL, never
+# the COVERAGE. FR-PII-9 still redacts the span either way.
+_OUTCOME_RANK = {"ACCEPTED": 0, "UNCERTAIN": 1}
 
 
 class Outcome(str, Enum):
@@ -198,6 +208,7 @@ def resolve_overlaps(findings: list[Finding]) -> list[Finding]:
         findings,
         key=lambda f: (
             f.start,
+            _OUTCOME_RANK.get(f.outcome.value, 9),
             _SENSITIVITY_RANK.get(f.sensitivity, 9),
             _TIER_RANK.get(f.tier, 9),
         ),
