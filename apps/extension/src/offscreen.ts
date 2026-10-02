@@ -366,3 +366,21 @@ chrome.runtime.onMessage.addListener(
     return true; // response is asynchronous
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Readiness handshake
+//
+// Announced LAST, after the listener above is registered. A worker that sends
+// before this line runs gets "Receiving end does not exist" - which is exactly
+// what happened on the first two attempts at this extension.
+// ─────────────────────────────────────────────────────────────────────────────
+try {
+  void chrome.runtime.sendMessage({ kind: 'OFFSCREEN_READY' }, () => {
+    // Reading lastError suppresses the console warning when no listener is
+    // attached yet. Absence is not an error: the worker may be asleep, and it
+    // will notice readiness the next time it opens this document.
+    void chrome.runtime.lastError;
+  });
+} catch (error) {
+  console.warn('[sih] offscreen readiness ping failed:', error);
+}

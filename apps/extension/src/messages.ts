@@ -40,7 +40,24 @@ export interface ObserveRequest {
   readonly collected: CollectRequest;
 }
 
-export type InboundMessage = CollectRequest | ObserveRequest;
+/** Offscreen → service worker: "my module has evaluated, I have a listener". */
+export interface OffscreenReady {
+  readonly kind: 'OFFSCREEN_READY';
+}
+
+/**
+ * `chrome.offscreen.createDocument()` resolves when the DOCUMENT exists, not
+ * when its module has EVALUATED. The offscreen document registers its
+ * `chrome.runtime.onMessage` listener as a side effect of module evaluation, so
+ * a `sendMessage` issued the instant `createDocument` resolves races that
+ * listener and fails with "Receiving end does not exist".
+ *
+ * The handshake below closes that window: the worker sends nothing to Z1 until Z1
+ * has announced that it is listening.
+ */
+export const OFFSCREEN_READY_TIMEOUT_MS = 5_000;
+
+export type InboundMessage = CollectRequest | ObserveRequest | OffscreenReady;
 
 /** Offscreen → service worker. Carries the ENVELOPE, never raw content. */
 export interface ObserveResponse {
@@ -66,11 +83,9 @@ export interface ObserveResponse {
 
 /** Every message must name its kind; an unknown kind is refused, not ignored. */
 export function isInbound(value: unknown): value is InboundMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const kind = (value as { kind?: unknown }).kind;
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { kind?: unknown }).kind === 'string' &&
-    ((value as { kind: string }).kind === 'COLLECT' ||
-      (value as { kind: string }).kind === 'OBSERVE')
+    kind === 'COLLECT' || kind === 'OBSERVE' || kind === 'OFFSCREEN_READY'
   );
 }

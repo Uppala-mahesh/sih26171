@@ -34,34 +34,83 @@ import type {
 } from './messages.js';
 
 const OFFSCREEN_PATH = 'offscreen/offscreen.html';
+const OFFSCREEN_READY_TIMEOUT_MS = 5_000;
 
 /**
- * Chrome permits ONE offscreen document per extension.
- *
- * Reusing it is therefore not an optimisation, it is a correctness requirement -
- * a second `createDocument` call throws. `creating` also collapses concurrent
- * callers onto one promise instead of letting them race.
+ * Chrome permits ONE offscreen document per extension, so reuse is a
+ * correctness requirement rather than an optimisation - a second
+ * `createDocument` call throws.
  */
 let creating: Promise<void> | null = null;
 
+/**
+ * Resolved when Z1 announces that its message listener is registered.
+ *
+ * `chrome.offscreen.createDocument()` resolves when the DOCUMENT is created, not
+ * when its module has EVALUATED. The offscreen document registers its
+ * `onMessage` listener as a side effect of that evaluation, so sending the instant
+ * creation resolves races it and fails with "Receiving end does not exist".
+ *
+ * This promise is the handshake that closes that window.
+ */
+let offscreenReady: Promise<void> | null = null;
+let markOffscreenReady: (() => void) | null = null;
+
+function awaitOffscreenReady(): Promise<void> {
+  if (!offscreenReady) {
+    offscreenReady = new Promise<void>((resolve) => {
+      markOffscreenReady = resolve;
+      // Bounded: a readiness ping that never arrives must surface as a failure
+      // rather than hanging the click forever.
+      setTimeout(resolve, OFFSCREEN_READY_TIMEOUT_MS);
+    });
+  }
+  return offscreenReady;
+}
+
+/**
+ * The one listener the worker keeps: Z1 announcing readiness.
+ *
+ * The message shapes are type-only imports and the comparison below is a string
+ * test, so the built worker still has ZERO runtime imports.
+ */
+chrome.runtime.onMessage.addListener(
+  (
+    message: unknown,
+    _sender: chrome.runtime.MessageSender,
+    sendResponse: (r: unknown) => void,
+  ) => {
+    const kind = (message as { kind?: unknown } | null)?.kind;
+    if (kind !== 'OFFSCREEN_READY') return false;
+    markOffscreenReady?.();
+    markOffscreenReady = null;
+    sendResponse({ kind: 'READY_ACK' });
+    return false;
+  },
+);
+
 async function ensureOffscreen(): Promise<void> {
-  if (await chrome.offscreen.hasDocument()) return;
-  if (creating) {
-    await creating;
-    return;
+  const alreadyOpen = await chrome.offscreen.hasDocument();
+  if (!alreadyOpen) {
+    if (!creating) {
+      creating = chrome.offscreen
+        .createDocument({
+          url: OFFSCREEN_PATH,
+          reasons: ['DOM_PARSER' as chrome.offscreen.Reason],
+          justification:
+            'Read page text and rasterise page pixels on-device so sensitive ' +
+            'data can be redacted before anything leaves the browser.',
+        })
+        .then(() => undefined);
+    }
+    try {
+      await creating;
+    } finally {
+      creating = null;
+    }
   }
-  creating = chrome.offscreen.createDocument({
-    url: OFFSCREEN_PATH,
-    reasons: ['DOM_PARSER' as chrome.offscreen.Reason],
-    justification:
-      'Read page text and rasterise page pixels on-device so sensitive data can ' +
-      'be redacted before anything leaves the browser.',
-  });
-  try {
-    await creating;
-  } finally {
-    creating = null;
-  }
+  // The document exists; now wait for its module to have run.
+  await awaitOffscreenReady();
 }
 
 function observationId(): string {
@@ -92,6 +141,26 @@ async function observe(
 }
 
 /**
+ * Report a failure to the operator.
+ *
+ * Every call is individually guarded. A rejected `setBadgeText` inside a catch
+ * block produces a NEW unhandled rejection that replaces the real error with
+ * "Uncaught (in promise)", which is how a collection failure once presented as a
+ * message-routing failure. The surface reporting the problem must not become a
+ * second, louder problem.
+ */
+async function reportFailure(detail: string): Promise<void> {
+  console.warn('[sih] ' + detail);
+  try {
+    await chrome.action.setBadgeText({ text: 'ERR' });
+    await chrome.action.setBadgeBackgroundColor({ color: '#b42318' });
+    await chrome.action.setTitle({ title: `SIH26171 — ${detail}` });
+  } catch (error) {
+    console.warn('[sih] could not even set the badge:', error);
+  }
+}
+
+/**
  * Surface the verdict where the operator can see it without opening devtools.
  *
  * A privacy tool that silently succeeds is indistinguishable from one that is
@@ -106,17 +175,21 @@ async function announce(result: ObserveResponse): Promise<void> {
     NOT_INSTRUMENTED: { text: 'HOLD', color: '#b42318' },
   }[result.state as 'SANITIZED' | 'DEGRADED' | 'UNCERTAIN' | 'NOT_INSTRUMENTED'];
 
-  await chrome.action.setBadgeText({ text: badge?.text ?? '?' });
-  await chrome.action.setBadgeBackgroundColor({ color: badge?.color ?? '#57606a' });
-  await chrome.action.setTitle({
-    title:
-      `SIH26171 — ${result.state}\n` +
-      `rung: ${result.rung}\n` +
-      `redactions: ${result.redactions}\n` +
-      `frames verified: ${result.framesVerified}\n` +
-      `transmitted: ${result.transmitted}` +
-      (result.reason ? `\n${result.reason}` : ''),
-  });
+  try {
+    await chrome.action.setBadgeText({ text: badge?.text ?? '?' });
+    await chrome.action.setBadgeBackgroundColor({ color: badge?.color ?? '#57606a' });
+    await chrome.action.setTitle({
+      title:
+        `SIH26171 — ${result.state}\n` +
+        `rung: ${result.rung}\n` +
+        `redactions: ${result.redactions}\n` +
+        `frames verified: ${result.framesVerified}\n` +
+        `transmitted: ${result.transmitted}` +
+        (result.reason ? `\n${result.reason}` : ''),
+    });
+  } catch (error) {
+    console.warn('[sih] could not set the badge:', error);
+  }
 }
 
 /**
@@ -145,21 +218,23 @@ chrome.action.onClicked.addListener((tab) => {
       const collected = reply as CollectRequest | undefined;
 
       if (!collected || collected.kind !== 'COLLECT') {
-        await chrome.action.setBadgeText({ text: 'ERR' });
-        await chrome.action.setBadgeBackgroundColor({ color: '#b42318' });
+        await reportFailure('the content script returned no collection');
         return;
       }
 
       const result = await observe(collected, 'summarise the active page');
       await announce(result);
     } catch (error) {
-      // A failed collection is reported as a failure. Claiming otherwise is the
-      // behaviour this whole project exists to eliminate.
-      await chrome.action.setBadgeText({ text: 'ERR' });
-      await chrome.action.setBadgeBackgroundColor({ color: '#b42318' });
-      await chrome.action.setTitle({
-        title: `SIH26171 — could not observe: ${String(error)}`,
-      });
+      // The single most likely cause of a send failure here is a tab that was
+      // already open when the extension was installed or reloaded: content
+      // scripts are injected at page load, not retroactively. Saying so is more
+      // useful than printing "Receiving end does not exist".
+      const text = String(error);
+      await reportFailure(
+        text.includes('Receiving end')
+          ? 'no content script in this tab — RELOAD THE PAGE (F5) and try again'
+          : `could not observe: ${text}`,
+      );
     }
   })();
 });

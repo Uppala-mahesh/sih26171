@@ -197,3 +197,42 @@ def test_runtime_and_tabs_channels_are_not_confused() -> None:
     assert "runtime.sendMessage" in worker, (
         "the worker must reach the offscreen document via runtime.sendMessage"
     )
+
+
+def test_the_worker_waits_for_z1_to_be_listening() -> None:
+    """The race that produced 'Receiving end does not exist' a second time.
+
+    `chrome.offscreen.createDocument()` resolves when the DOCUMENT exists, not
+    when its module has EVALUATED. The offscreen document registers its message
+    listener as a side effect of that evaluation, so sending immediately races it.
+
+    The worker must therefore wait for an explicit readiness signal, and the
+    offscreen document must send one.
+    """
+    worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    offscreen = (ARTIFACT / "offscreen" / "offscreen.js").read_text(encoding="utf-8")
+
+    assert "OFFSCREEN_READY" in worker, (
+        "the worker has no readiness handshake; it will race the offscreen "
+        "module's listener registration"
+    )
+    assert "OFFSCREEN_READY" in offscreen, (
+        "the offscreen document never announces that it is listening"
+    )
+    # The handshake must be awaited, not merely observed.
+    assert "awaitOffscreenReady" in worker or "await offscreenReady" in worker
+
+
+def test_a_rejected_badge_cannot_mask_the_real_error() -> None:
+    """Reporting a failure must not become a second, louder failure.
+
+    A `setBadgeText` rejection inside a catch block produces a NEW unhandled
+    rejection, which replaces the real diagnostic with "Uncaught (in promise)".
+    That is how a collection failure presented as a message-routing failure.
+    """
+    worker = (ARTIFACT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    assert "reportFailure" in worker, "failures are not funnelled through one helper"
+    # The helper must guard its own chrome calls.
+    assert worker.count("could not set the badge") >= 1, (
+        "the badge path is unguarded, so a failure there masks the real error"
+    )
