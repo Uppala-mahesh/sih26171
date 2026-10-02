@@ -144,28 +144,6 @@ const SCENARIOS = [
     },
   },
   {
-    // The case that made the tool useless: a page with NO painted surfaces has
-    // nothing that could conceal text, so withholding protected nothing.
-    name: 'a text-only page is sanitized and transmitted',
-    async collect() {
-      return {
-        kind: 'COLLECT',
-        url: 'https://example.test/article',
-        title: 'An article',
-        segments: [
-          { elementId: 'n0', text: 'Aadhaar 1234 5678 9012', tagName: 'P', ariaLabel: '' },
-          { elementId: 'n1', text: 'Ordinary prose.', tagName: 'P', ariaLabel: '' },
-        ],
-        frameBlind: false,
-        visualSurfaces: 0,
-      };
-    },
-    expect(seen) {
-      assert.equal(seen.badge.at(-1), 'OK', 'a text-only page should be SANITIZED');
-      assert.match(seen.title.at(-1), /transmitted: true/);
-    },
-  },
-  {
     // Almost every real website paints something - a logo, an icon, a background.
     // Refusing to work on all of them is a correct refusal that makes the tool
     // useless, so this transmits with the limitation DECLARED rather than
@@ -185,11 +163,65 @@ const SCENARIOS = [
       assert.equal(seen.badge.at(-1), 'DEG', 'painted content must be DEGRADED, not clean');
       const title = seen.title.at(-1);
       assert.match(title, /transmitted: true/, 'DEGRADED must still transmit');
-      // The limitation must be visible to the operator, with the real count.
       assert.match(title, /3 painted element/, 'the painted-surface count is not reported');
       assert.match(title, /could NOT be inspected/);
-      // And the redaction still happened - degrading is not a licence to skip.
       assert.match(title, /redactions: [1-9]/);
+    },
+  },
+  {
+    // A CONFIRMED detection (Verhoeff-valid Aadhaar, 0.99) on a page with nothing
+    // painted: full coverage, so SANITIZED.
+    name: 'a text-only page with a confirmed detection is SANITIZED',
+    async collect() {
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/article',
+        title: 'An article',
+        segments: [
+          { elementId: 'n0', text: 'Aadhaar 999999990019', tagName: 'P', ariaLabel: '' },
+          { elementId: 'n1', text: 'Ordinary prose.', tagName: 'P', ariaLabel: '' },
+        ],
+        frameBlind: false,
+        visualSurfaces: 0,
+      };
+    },
+    expect(seen) {
+      assert.equal(seen.badge.at(-1), 'OK', 'a confirmed, fully covered page should be SANITIZED');
+      assert.match(seen.title.at(-1), /transmitted: true/);
+    },
+  },
+  {
+    // THE REGRESSION, caught here first.
+    //
+    // `1234 5678 9012` is classified OTP:UNCERTAIN at 0.5 confidence - below the
+    // threshold, so it is redacted by default. But `unresolved` does not
+    // contribute to `residualFindings`, because nothing raw survives. The
+    // SANITIZED branch tested residuals alone and so reported this page as fully
+    // clean, discarding the list of entity types that were merely guessed at.
+    //
+    // Asserted on both text-only AND painted pages, because only the combination
+    // reached the new SANITIZED branch.
+    name: 'an uncertain detection is never declared SANITIZED',
+    async collect() {
+      return {
+        kind: 'COLLECT',
+        url: 'https://example.test/otp-ish',
+        title: 'A page',
+        segments: [
+          { elementId: 'n0', text: 'Aadhaar 1234 5678 9012', tagName: 'P', ariaLabel: '' },
+        ],
+        frameBlind: false,
+        visualSurfaces: 0,
+      };
+    },
+    expect(seen) {
+      assert.equal(
+        seen.badge.at(-1),
+        'UNC',
+        'an uncertain detection was declared clean: the unresolved list is being dropped',
+      );
+      assert.match(seen.title.at(-1), /transmitted: true/, 'UNCERTAIN is a declared verdict, not a refusal');
+      assert.match(seen.title.at(-1), /redactions: [1-9]/, 'the uncertain value must still be redacted');
     },
   },
   {

@@ -133,11 +133,20 @@ checked, states what was not, and carries the limitation to the receiver.
 
 ## 6. Known limitations of this model
 
-1. **`UNCERTAIN` and painted surfaces cannot both be represented.** A page with
-   unresolved entity types *and* uninspected painted content reports `DEGRADED`,
-   and the unresolved list is dropped, because the union carries one state. Both
-   transmit with `ALLOW_DECLARED`, so nothing unsafe follows — but the receiver
-   loses which entity types were uncertain. **Open, not patched.**
+1. ~~**`UNCERTAIN` and painted surfaces cannot both be represented.**~~ **Resolved.**
+   A page with unresolved entity types *and* uninspected painted content now
+   reports `UNCERTAIN`, and the branch was moved ahead of the `visualSurfaces`
+   branches so it can win.
+
+   Ordering that fixes it: `UNCERTAIN` names concrete data (which entity types
+   fell below threshold), whereas the painted-surface limitation is a property of
+   the *page* and is already surfaced to the operator in the badge tooltip. So
+   the more specific claim is the one carried.
+
+   This was found by inspection, not by a failing test — the branch reordering that
+   introduced the regression shipped with 333 green tests, because no scenario
+   combined an UNCERTAIN detection with zero painted surfaces. Both directions are
+   now asserted in `test_pipeline_end_to_end.py`.
 
 2. **Pixel capture has no producer.** `PixelFrame` and `PixelRedactor` are
    implemented and benchmarked, but nothing in the browser constructs a

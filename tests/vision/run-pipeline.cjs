@@ -118,6 +118,10 @@ function run(name, opts) {
     viewport: { width: 1280, height: 720 },
     frameBlind: false,
     capability: opts.capability,
+    // Present so the evidence branch has something to reason about. Omitting it
+    // is meaningful: `undefined` means the collector could not tell, which is
+    // treated as unknown and never as zero.
+    ...(opts.visualSurfaces === undefined ? {} : { visualSurfaces: opts.visualSurfaces }),
     captureText: () =>
       opts.texts.map((text, i) => ({
         elementId: `n${i}`,
@@ -139,7 +143,13 @@ function run(name, opts) {
     now: () => FIXED_NOW,
   };
 
-  const result = runPipeline(adapters, { vault, guard, detect }, 'check my account');
+  // A deterministic stub, so an UNCERTAIN outcome can be produced on demand rather
+  // than hunted for in the taxonomy. The real detector has no text fixture that
+  // reliably lands below threshold, and a regression test that depends on finding
+  // one by accident is a regression test that stops covering the regression.
+  const detectFor = opts.detect === undefined ? detect : () => opts.detect;
+
+  const result = runPipeline(adapters, { vault, guard, detect: detectFor }, 'check my account');
   const serialised = JSON.stringify(result.envelope);
 
   return {
@@ -161,6 +171,30 @@ function run(name, opts) {
     auditVerdicts: guard.audit.map((e) => e.verdict),
   };
 }
+
+/**
+ * A single UNCERTAIN finding, injected deterministically.
+ *
+ * The real detector has no fixture that reliably lands below the confidence
+ * threshold, and a regression test that has to go hunting for one stops covering
+ * the regression the first time the taxonomy changes. The outcome is therefore
+ * stated here rather than induced.
+ */
+const UNCERTAIN_DETECTION = {
+  findings: [
+    {
+      entityId: 'AADHAAR',
+      start: 0,
+      end: 16,
+      tier: 'T3',
+      sensitivity: 'high',
+      outcome: 'UNCERTAIN',
+      confidence: 0.5,
+      placeholderPrefix: 'AADHAAR',
+    },
+  ],
+  discarded: 0,
+};
 
 const scenarios = [
   run('clean-webgpu', {
@@ -193,6 +227,48 @@ const scenarios = [
     texts: ['Clean text here'],
     capability: { rung: 'webgpu', canVerifyPixels: true },
     boxes: null,
+  }),
+
+  // ── visualSurfaces drives the evidence branch ────────────────────────────────
+  // These three were the REGRESSION: the `visualSurfaces` branches were added
+  // ahead of the UNCERTAIN branch, and `unresolved` does not contribute to
+  // `residualFindings` (an entity below threshold is redacted anyway, so no raw
+  // value survives and the residual count stays 0). A SANITIZED branch testing
+  // only residuals therefore swallowed UNCERTAIN and declared the page clean.
+  //
+  // No scenario previously combined an UNCERTAIN detection with zero painted
+  // surfaces, which is why 333 tests stayed green through it.
+  run('text-only-clean', {
+    texts: ['Clean text here'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    boxes: null,
+    visualSurfaces: 0,
+  }),
+  run('text-only-uncertain', {
+    texts: ['Your reference is REF-991'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    boxes: null,
+    visualSurfaces: 0,
+    detect: UNCERTAIN_DETECTION,
+  }),
+  run('painted-surface-uncertain', {
+    texts: ['Your reference is REF-991'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    boxes: null,
+    visualSurfaces: 4,
+    detect: UNCERTAIN_DETECTION,
+  }),
+  run('painted-surface-clean', {
+    texts: ['Clean text here'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    boxes: null,
+    visualSurfaces: 4,
+  }),
+  run('unknown-surface-count', {
+    texts: ['Clean text here'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    boxes: null,
+    // Omitted entirely: the collector could not tell.
   }),
 
   // ── boxes derived by the REAL binder, not placed by the harness ────────────

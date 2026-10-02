@@ -221,6 +221,33 @@ export function runPipeline(
       missingCheck: adapters.capability.missingCheck ?? 'pixel_rescan',
       declaredAt: now,
     };
+  } else if (pixelFailure !== null || residualFindings > 0) {
+    // DP-6: a state cannot exist without its evidence, so when no valid proof
+    // can be produced the honest answer is NOT_INSTRUMENTED - the payload has
+    // no certificate behind it. This is also the v1 shape: a failed check that
+    // reported success.
+    evidence = {
+      state: 'NOT_INSTRUMENTED',
+      missingCheck: pixelFailure !== null ? 'pixel_rescan' : 'text_rescan',
+      declaredAt: now,
+    };
+  } else if (unresolved.length > 0) {
+    // Placed BEFORE every SANITIZED branch, deliberately.
+    //
+    // `unresolved` does not contribute to `residualFindings`: an entity below the
+    // confidence threshold is redacted anyway, so no raw value survives and the
+    // residual count stays at zero. A SANITIZED branch that tested only for
+    // residuals would therefore swallow this case and declare the page clean,
+    // discarding the list of types that were merely guessed at.
+    //
+    // That was a real regression, introduced when the `visualSurfaces` branches
+    // were added ahead of this one. The 332-test suite did not catch it, because
+    // no scenario combined an UNCERTAIN detection with zero painted surfaces.
+    evidence = {
+      state: 'UNCERTAIN',
+      unresolved: [...new Set(unresolved)],
+      declaredAt: now,
+    };
   } else if (pixelFailure === null && residualFindings === 0 && adapters.visualSurfaces === 0) {
     // No frames were captured AND the collector reports no visual surface at all,
     // so there is no painted content that could conceal text the extractor missed.
@@ -233,16 +260,6 @@ export function runPipeline(
         residualFindings: 0,
       }),
       rung,
-      declaredAt: now,
-    };
-  } else if (pixelFailure !== null || residualFindings > 0) {
-    // DP-6: a state cannot exist without its evidence, so when no valid proof
-    // can be produced the honest answer is NOT_INSTRUMENTED - the payload has
-    // no certificate behind it. This is also the v1 shape: a failed check that
-    // reported success.
-    evidence = {
-      state: 'NOT_INSTRUMENTED',
-      missingCheck: pixelFailure !== null ? 'pixel_rescan' : 'text_rescan',
       declaredAt: now,
     };
   } else if (frames.length === 0 && adapters.visualSurfaces === undefined) {
@@ -280,12 +297,6 @@ export function runPipeline(
       state: 'DEGRADED',
       reason: 'opaque_region',
       rung,
-      declaredAt: now,
-    };
-  } else if (unresolved.length > 0) {
-    evidence = {
-      state: 'UNCERTAIN',
-      unresolved: [...new Set(unresolved)],
       declaredAt: now,
     };
   } else if (rung !== 'webgpu') {

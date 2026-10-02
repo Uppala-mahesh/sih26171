@@ -52,13 +52,22 @@ This is the step the whole design exists to get right.
 | Condition | State | Verdict | Badge |
 |---|---|---|---|
 | a check could not run (`canVerifyPixels: false`, or a residual failure) | `NOT_INSTRUMENTED` | `WITHHOLD` | `HOLD` |
+| unresolved entity types — **before** every SANITIZED branch | `UNCERTAIN` | `ALLOW_DECLARED` | `UNC` |
 | `visualSurfaces === 0`, residuals zero | `SANITIZED` | `ALLOW` | `OK` |
 | `visualSurfaces > 0`, residuals zero | `DEGRADED` | `ALLOW_DECLARED` | `DEG` |
 | `visualSurfaces === undefined` | `NOT_INSTRUMENTED` | `WITHHOLD` | `HOLD` |
-| unresolved entity types | `UNCERTAIN` | `ALLOW_DECLARED` | `UNC` |
 
-**Ordering is part of the spec.** The `undefined` case is evaluated **before**
-the `> 0` case. An unknown count is never read as zero; defaulting it would
+**Two orderings are part of the spec, and both were learned the hard way.**
+
+1. `visualSurfaces === undefined` is evaluated **before** `> 0`. Reading unknown as
+   zero is precisely the optimistic failure the four-state model prevents.
+2. `unresolved` is evaluated **before** every `SANITIZED` branch. `unresolved` does
+   *not* contribute to `residualFindings` — an entity below threshold is redacted
+   anyway, so no raw value survives and the residual count stays zero. A `SANITIZED`
+   branch testing residuals alone therefore swallowed `UNCERTAIN` and declared the
+   page clean. That regression shipped with 333 green tests, because no scenario
+   combined an uncertain detection with zero painted surfaces.
+
 ---
 
 ## 3. SEQ-2 — Propose, decide, execute

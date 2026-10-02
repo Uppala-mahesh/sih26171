@@ -48,6 +48,58 @@ def scenarios() -> dict[str, dict]:
 # -- the load-bearing assertions ----------------------------------------------
 
 
+def test_an_uncertain_detection_is_never_declared_sanitized(
+    scenarios: dict[str, dict],
+) -> None:
+    """The regression that 333 green tests did not catch.
+
+    `unresolved` does NOT contribute to `residualFindings`: an entity below the
+    confidence threshold is redacted anyway, so no raw value survives and the
+    residual count stays at zero. A SANITIZED branch testing only residuals
+    therefore swallowed UNCERTAIN and declared the page clean, discarding the list
+    of entity types that were merely guessed at.
+
+    It was introduced when the `visualSurfaces` branches were added ahead of the
+    UNCERTAIN branch, and it stayed hidden because no scenario combined an
+    UNCERTAIN detection with zero painted surfaces.
+    """
+    case = scenarios["text-only-uncertain"]
+    assert case["state"] == "UNCERTAIN", (
+        "a page with an uncertain detection was declared "
+        f"{case['state']}: the unresolved list is being dropped"
+    )
+    # And the same must hold when painted content is ALSO present.
+    painted = scenarios["painted-surface-uncertain"]
+    assert painted["state"] == "UNCERTAIN", (
+        f"uncertain + painted reported {painted['state']}"
+    )
+    # Both still transmit: UNCERTAIN is a declared verdict, not a refusal.
+    assert case["transmitted"] is True and painted["transmitted"] is True
+
+
+def test_the_visual_surface_decision_table(scenarios: dict[str, dict]) -> None:
+    """The full evidence table, asserted rather than described.
+
+    Ordering is part of the contract: an unknown surface count is evaluated
+    BEFORE a positive one, because reading unknown as zero is precisely the
+    optimistic failure the four-state model exists to prevent.
+    """
+    expected = {
+        # nothing painted, nothing uncertain -> full coverage
+        "text-only-clean": ("SANITIZED", True),
+        # painted content -> coverage is partial, and that is declared
+        "painted-surface-clean": ("DEGRADED", True),
+        # unknown count -> fail closed, never read as zero
+        "unknown-surface-count": ("NOT_INSTRUMENTED", False),
+    }
+    for name, (state, transmitted) in expected.items():
+        case = scenarios[name]
+        assert case["state"] == state, f"{name}: expected {state}, got {case['state']}"
+        assert case["transmitted"] is transmitted, (
+            f"{name}: transmitted={case['transmitted']}, expected {transmitted}"
+        )
+
+
 def test_no_raw_value_reaches_the_envelope(scenarios: dict[str, dict]) -> None:
     """The one assertion the entire project exists to support."""
     planted = "999999990019"
