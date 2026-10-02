@@ -97,8 +97,8 @@ sih-agent-v2/
 | **Phase 1 — Requirements** | 🟡 **Baseline written, counts corrected, RTM incomplete** — 99 FR + 53 NFR + 7 EI = **159**; RTM lists 99/99, **80 implemented** · *awaiting Product Owner sign-off on Gate G1* |
 | **Phase 2 — Design** | 🟡 **Partial** — C4 architecture · privacy boundary · threat model ✅ · **class model, sequences, data contracts and state-machine spec still owed** |
 | **Sprint 1 — Privacy core** | ✅ **Complete** — detector · vault · sanitizer · pixel redactor · egress guard, on **both** Python and TypeScript, parity-locked |
-| **Sprint 2 — Runtime** | ✅ **Complete** — MV3 Chrome extension · offscreen Z1 · end-to-end pipeline |
-| **Production code** | ✅ **Shipping** — 246 tests, 2 measured benchmarks, 1 loadable extension |
+| **Sprint 2 — Runtime** | 🟡 **Partial** — MV3 Chrome extension loads and runs · Z1 is the service worker · end-to-end pipeline live · **pixel capture unbuilt**, so painted content is declared uninspected |
+| **Production code** | ✅ **Shipping** — 328 tests, 4 benchmarks, 1 loadable extension · worker harness 7/7 · real-browser check |
 
 ### 6.1 The requirements baseline
 
