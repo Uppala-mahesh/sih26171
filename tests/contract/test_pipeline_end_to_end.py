@@ -156,3 +156,29 @@ def test_the_suite_cannot_pass_vacuously(scenarios: dict[str, dict]) -> None:
     """Both outcomes must appear, or the assertions above prove nothing."""
     assert any(c["transmitted"] for c in scenarios.values()), "nothing ever crossed"
     assert any(not c["transmitted"] for c in scenarios.values()), "nothing was ever blocked"
+
+
+def test_scenarios_exist_that_use_boxes_from_the_real_binder(
+    scenarios: dict[str, dict],
+) -> None:
+    """The redaction score must not depend on the harness placing good boxes.
+
+    Until CR-003, every scenario passed hand-placed rectangles, so the pixel
+    result measured the harness's box-picking rather than the system's. These
+    scenarios derive their masks through text runs -> detector -> binder, which
+    is the path the extension actually takes.
+    """
+    binder = {k: v for k, v in scenarios.items() if v["boxesFromBinder"]}
+    assert len(binder) >= 2, "no scenario exercises the real binder"
+    for name, case in binder.items():
+        assert case["boundBoxes"] > 0, f"{name} bound no boxes at all"
+        assert case["framesVerified"] == 1, f"{name}: derived boxes were not masked"
+        assert case["transmitted"] is True, name
+        assert case["aadhaarInEnvelope"] is False, name
+
+
+def test_both_box_sources_are_represented(scenarios: dict[str, dict]) -> None:
+    """Placed and derived boxes must both be exercised, so a regression in
+    either normalisation path is caught."""
+    assert any(c["boxesFromBinder"] for c in scenarios.values())
+    assert any(not c["boxesFromBinder"] for c in scenarios.values())

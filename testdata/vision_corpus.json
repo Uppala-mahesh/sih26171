@@ -1,0 +1,68 @@
+{
+  "version": "1.0.0",
+  "note": "Vision quality corpus (CR-003). Two things are measured: UI ROLE classification (FR-VIS-1) and TEXT-TO-PIXEL BOX BINDING (FR-RED-3). Roles are scored against hand-declared ground truth. Boxes are scored by count and IoU against rectangles a deterministic mock layout produces, so the binding path executes headlessly; in the browser the same code reads Range.getClientRects() instead. The OCR route (text painted into pixels) is NOT in this corpus because it is not implemented, and the benchmark reports it as unmeasured rather than passing.",
+  "elements": [
+    { "name": "password-field", "tagName": "INPUT", "typeAttribute": "password", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 200, "height": 32, "aspectRatioCloseness": 0.85, "expectedRole": "PASSWORD_INPUT" },
+    { "name": "text-field", "tagName": "INPUT", "typeAttribute": "text", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 200, "height": 32, "aspectRatioCloseness": 0.85, "expectedRole": "TEXT_INPUT" },
+    { "name": "email-field", "tagName": "INPUT", "typeAttribute": "email", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 220, "height": 32, "aspectRatioCloseness": 0.8, "expectedRole": "TEXT_INPUT" },
+    { "name": "checkbox", "tagName": "INPUT", "typeAttribute": "checkbox", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 16, "height": 16, "aspectRatioCloseness": 1.0, "expectedRole": "CHECKBOX" },
+    { "name": "radio", "tagName": "INPUT", "typeAttribute": "radio", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 16, "height": 16, "aspectRatioCloseness": 1.0, "expectedRole": "RADIO" },
+    { "name": "submit", "tagName": "INPUT", "typeAttribute": "submit", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 90, "height": 34, "aspectRatioCloseness": 0.6, "expectedRole": "BUTTON" },
+    { "name": "hidden-token", "tagName": "INPUT", "typeAttribute": "hidden", "isInteractive": false, "isFocusable": false, "hasChildren": false, "width": 0, "height": 0, "aspectRatioCloseness": 0, "expectedRole": "UNKNOWN" },
+    { "name": "dropdown", "tagName": "SELECT", "isInteractive": true, "isFocusable": true, "hasChildren": true, "width": 180, "height": 32, "aspectRatioCloseness": 0.75, "expectedRole": "SELECT" },
+    { "name": "notes", "tagName": "TEXTAREA", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 300, "height": 80, "aspectRatioCloseness": 0.4, "expectedRole": "TEXT_INPUT" },
+    { "name": "push-button", "tagName": "BUTTON", "isInteractive": true, "isFocusable": true, "hasChildren": true, "width": 110, "height": 36, "aspectRatioCloseness": 0.5, "expectedRole": "BUTTON" },
+    { "name": "nav-link", "tagName": "A", "isInteractive": true, "isFocusable": true, "hasChildren": true, "width": 90, "height": 20, "aspectRatioCloseness": 0.3, "expectedRole": "LINK" },
+    { "name": "site-nav", "tagName": "NAV", "isInteractive": false, "isFocusable": false, "hasChildren": true, "width": 1200, "height": 48, "aspectRatioCloseness": 0.05, "expectedRole": "NAVIGATION" },
+    { "name": "ledger", "tagName": "TABLE", "isInteractive": false, "isFocusable": false, "hasChildren": true, "width": 800, "height": 400, "aspectRatioCloseness": 0.3, "expectedRole": "TABLE" },
+    { "name": "sign-in-form", "tagName": "FORM", "isInteractive": false, "isFocusable": false, "hasChildren": true, "width": 400, "height": 300, "aspectRatioCloseness": 0.6, "expectedRole": "FORM" },
+    { "name": "consent-modal", "tagName": "DIALOG", "isInteractive": false, "isFocusable": false, "hasChildren": true, "width": 500, "height": 260, "aspectRatioCloseness": 0.5, "expectedRole": "DIALOG" },
+    { "name": "avatar", "tagName": "IMG", "isInteractive": false, "isFocusable": false, "hasChildren": false, "width": 48, "height": 48, "aspectRatioCloseness": 1.0, "expectedRole": "IMAGE" },
+    { "name": "chart-canvas", "tagName": "CANVAS", "isInteractive": false, "isFocusable": false, "hasChildren": false, "width": 600, "height": 240, "aspectRatioCloseness": 0.4, "expectedRole": "IMAGE" },
+    { "name": "aria-tab", "tagName": "DIV", "ariaRole": "tab", "isInteractive": true, "isFocusable": true, "hasChildren": true, "width": 120, "height": 40, "aspectRatioCloseness": 0.5, "expectedRole": "TAB" },
+    { "name": "aria-menuitem", "tagName": "DIV", "ariaRole": "menuitem", "isInteractive": true, "isFocusable": false, "hasChildren": true, "width": 200, "height": 32, "aspectRatioCloseness": 0.7, "expectedRole": "MENU_ITEM" },
+    { "name": "plain-div", "tagName": "DIV", "isInteractive": false, "isFocusable": false, "hasChildren": true, "width": 300, "height": 120, "aspectRatioCloseness": 0.5, "expectedRole": "UNKNOWN" },
+    { "name": "generic-square-div", "tagName": "DIV", "isInteractive": true, "isFocusable": true, "hasChildren": false, "width": 40, "height": 40, "aspectRatioCloseness": 1.0, "expectedRole": "UNKNOWN", "note": "Geometry suggests TEXT_INPUT at 0.52, below the 0.60 threshold. Refusing to guess is the correct answer (FR-VIS-4)." },
+    { "name": "generic-interactive-div", "tagName": "DIV", "isInteractive": true, "isFocusable": false, "hasChildren": false, "width": 120, "height": 30, "aspectRatioCloseness": 0.5, "expectedRole": "UNKNOWN", "note": "Suggests BUTTON at 0.50, below threshold." }
+  ],
+  "documents": [
+    {
+      "name": "single-line-pii",
+      "runs": [{ "text": "Your Aadhaar is 999999990019 on record.", "rects": [[10, 10, 380, 18]] }],
+      "expectedBoxes": 1
+    },
+    {
+      "name": "two-spans-two-runs",
+      "runs": [
+        { "text": "Aadhaar 999999990019", "rects": [[10, 10, 180, 18]] },
+        { "text": "Email parker.sterling@example.test", "rects": [[10, 40, 300, 18]] }
+      ],
+      "expectedBoxes": 2
+    },
+    {
+      "name": "wrapped-value-two-line-boxes",
+      "runs": [{ "text": "Card 4532 0151 1283 0366", "rects": [[10, 10, 200, 18], [10, 32, 140, 18]] }],
+      "expectedBoxes": 2,
+      "note": "Text wraps. Both line boxes must be masked; masking only the first would leave digits visible."
+    },
+    {
+      "name": "prose-only-yields-no-boxes",
+      "runs": [{ "text": "Your order shipped yesterday.", "rects": [[10, 10, 260, 18]] }],
+      "expectedBoxes": 0,
+      "note": "The negative case. Without it, a binder that boxes everything would look perfect."
+    },
+    {
+      "name": "painted-text-cannot-bind",
+      "runs": [{ "text": "", "rects": [] }],
+      "expectedBoxes": 0,
+      "note": "A canvas holding '999999990019' has no text node, so no runs and no offsets exist. The system declares the region opaque instead of inventing a box."
+    },
+    {
+      "name": "unlaid-out-text-binds-nothing",
+      "runs": [{ "text": "Secret 847291", "rects": [] }],
+      "expectedBoxes": 0,
+      "expectedUnbound": 1,
+      "note": "display:none text still contributes characters, so the detector sees the value and the binder must report it UNBOUND rather than silently dropping it."
+    }
+  ]
+}

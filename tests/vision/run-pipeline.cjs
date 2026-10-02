@@ -34,6 +34,12 @@ const { EgressGuard } = require(
 const { detect } = require(
   path.join(__dirname, '..', '..', 'dist', 'packages', 'privacy', 'detector.js'),
 );
+const { bindFindings, buildRuns, joinRuns } = require(
+  path.join(__dirname, '..', '..', 'dist', 'packages', 'vision', 'layout', 'text-runs.js'),
+);
+const { boundingBox } = require(
+  path.join(__dirname, '..', '..', 'dist', 'packages', 'contracts', 'geometry.js'),
+);
 
 const NONCE = 'deadbeef';
 const FIXED_NOW = 1700000000000;
@@ -58,13 +64,50 @@ function buildFrame(width, height, channels, boxes) {
 const AADHAAR = '999999990019';
 
 /**
+ * Derive mask boxes the way the extension does: from text runs, through the
+ * detector, into the binder.
+ *
+ * The earlier scenarios passed hand-placed rectangles. That made the redaction
+ * score depend on the HARNESS choosing good boxes rather than on the system
+ * finding them, which is the same substitution this project exists to stop
+ * making. These scenarios use the real binder end to end.
+ */
+function boxesFromRuns(runs) {
+  const built = buildRuns(
+    runs.map((r, i) => ({
+      elementId: `run-${i}`,
+      text: r.text,
+      rects: r.rects.map(([x, y, w, h]) => boundingBox(x, y, w, h)),
+    })),
+  );
+  const text = joinRuns(built);
+  const findings = detect(text).findings;
+  const bindings = bindFindings(
+    findings.map((f) => ({ entityId: f.entityId, start: f.start, end: f.end })),
+    built,
+  );
+  return bindings.filter((b) => b.bound).flatMap((b) => b.boxes);
+}
+
+/**
  * @param {object} opts
  * @param {string[]} opts.texts      raw text segments, as the page would yield
  * @param {object} opts.capability
  * @param {Array}  opts.boxes        pixel boxes, or null for no frames
- * @param {boolean} opts.oversize    drive the mask below the IoU floor
+ * @param {Array}  opts.runs         text runs; boxes are DERIVED from these
  */
 function run(name, opts) {
+  const derived = opts.runs ? boxesFromRuns(opts.runs) : null;
+
+  // Explicit scenarios state boxes as [x,y,w,h] tuples; derived ones are
+  // already BoundingBox objects. Normalise here so both paths hand the
+  // redactor the same shape - passing a raw tuple through silently produces
+  // NaN geometry and an IoU of 0, which reads as a masking failure.
+  let boxes;
+  if (derived !== null) boxes = derived;
+  else if (opts.boxes === null) boxes = null;
+  else boxes = opts.boxes.map(([x, y, w, h]) => boundingBox(x, y, w, h));
+
   const vault = new PlaceholderVault(`obs-${name}`, NONCE);
   const guard = new EgressGuard();
 
@@ -83,14 +126,14 @@ function run(name, opts) {
         ariaLabel: '',
       })),
     captureFrames: () =>
-      opts.boxes === null
+      boxes === null
         ? []
         : [
             {
               elementId: 'frame-0',
-              frame: buildFrame(40, 24, 3, opts.boxes),
-              boxes: opts.boxes.map(([x, y, w, h]) => ({ x, y, width: w, height: h })),
-              entities: opts.boxes.map(() => 'AADHAAR'),
+              frame: buildFrame(40, 24, 3, boxes.map((b) => [b.x, b.y, b.width, b.height])),
+              boxes,
+              entities: boxes.map(() => 'AADHAAR'),
             },
           ],
     now: () => FIXED_NOW,
@@ -109,6 +152,9 @@ function run(name, opts) {
     pixelFailure: result.pixelFailure !== null,
     transmitted: result.transmitted,
     withheld: result.transmitError !== null,
+    // Whether the boxes came from the real binder rather than the harness.
+    boxesFromBinder: derived !== null,
+    boundBoxes: boxes === null ? 0 : boxes.length,
     // The load-bearing assertion: does any raw value appear in the envelope?
     aadhaarInEnvelope: serialised.includes(AADHAAR),
     envelopeBytes: serialised.length,
@@ -147,6 +193,21 @@ const scenarios = [
     texts: ['Clean text here'],
     capability: { rung: 'webgpu', canVerifyPixels: true },
     boxes: null,
+  }),
+
+  // ── boxes derived by the REAL binder, not placed by the harness ────────────
+  run('binder-derived-boxes', {
+    texts: ['Your Aadhaar is 999999990019 on record.'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    runs: [{ text: 'Your Aadhaar is 999999990019 on record.', rects: [[6, 6, 28, 10]] }],
+  }),
+  run('binder-two-spans', {
+    texts: ['Aadhaar 999999990019', 'Email parker.sterling@example.test'],
+    capability: { rung: 'webgpu', canVerifyPixels: true },
+    runs: [
+      { text: 'Aadhaar 999999990019', rects: [[4, 4, 16, 10]] },
+      { text: 'Email parker.sterling@example.test', rects: [[4, 14, 22, 8]] },
+    ],
   }),
 ];
 

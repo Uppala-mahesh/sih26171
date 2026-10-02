@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SIH26171 — Offscreen document: ZONE Z1.
  *
  * This is the only context that touches page DOM, page pixels, the vault and the
@@ -18,8 +18,21 @@
  */
 
 import { CapabilityResolver, type CapabilityProbe } from '../../../packages/vision/capability/ladder.js';
+import {
+  bindFindings,
+  buildRuns,
+  joinRuns,
+  type RunInput,
+  type TextRun,
+} from '../../../packages/vision/layout/text-runs.js';
+import {
+  clampToFrame,
+  toFrameLocal,
+} from '../../../packages/vision/layout/geometry-ops.js';
+import { boundingBox, type BoundingBox } from '../../../packages/contracts/geometry.js';
 import { EgressGuard } from '../../../packages/gateway/guard.js';
 import { PlaceholderVault } from '../../../packages/privacy/vault.js';
+import { detect } from '../../../packages/privacy/detector.js';
 import { PixelFrame } from '../../../packages/privacy/pixels.js';
 import { runPipeline, type FrameSegment, type PageAdapters } from '../../../packages/pipeline/orchestrator.js';
 import { isInbound, type ObserveRequest, type ObserveResponse } from './messages.js';
@@ -117,14 +130,28 @@ function buildAdapters(request: ObserveRequest, rung: string): PageAdapters {
 }
 
 /**
- * Rasterise each visual element into a plain byte buffer.
+ * Rasterise each visual element and bind any sensitive spans inside it to real
+ * pixel boxes (CR-003).
  *
- * Uses `getImageData` on a detached canvas rather than any screenshot API: the
- * result is an uncompressed RGBA buffer the redactor can address by pixel, with
- * no image library in between.
+ * This is the step that makes the pixel route honest. Before it, `boxes` was
+ * always empty, so the redactor was verifying the absence of masking rather than
+ * performing any - the "pixel redaction" was theatre.
+ *
+ * ── How a box is obtained, and why no model is needed ────────────────────────
+ * For text inside the element we walk its text nodes, build a Range over the
+ * exact character offsets the detector reported, and read
+ * `getClientRects()`. The browser has already laid the text out; this asks it
+ * where it put the glyphs. That is an exact answer to an exact question, which
+ * is strictly better than a model's confident approximation.
+ *
+ * For text painted into pixels there is no text node, so there is nothing to
+ * ask. Those spans come back UNBOUND from `bindFindings` with a stated reason,
+ * and this function reports them rather than inventing a region.
  */
 function captureFrames(): FrameSegment[] {
   const segments: FrameSegment[] = [];
+  const unbound: UnboundSpan[] = [];
+
   for (const element of visualElements()) {
     const rect = element.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
@@ -137,41 +164,160 @@ function captureFrames(): FrameSegment[] {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) continue;
 
+    let rasterised = false;
     try {
       if (element instanceof HTMLVideoElement) {
         ctx.drawImage(element, 0, 0, width, height);
+        rasterised = true;
       } else if (element instanceof HTMLImageElement) {
-        if (!element.complete) continue; // not decoded yet; claiming otherwise is a lie
-        ctx.drawImage(element, 0, 0, width, height);
+        // An image that has not decoded has no pixels to read. Claiming
+        // otherwise would be reporting a clean scan of nothing.
+        if (element.complete && element.naturalWidth > 0) {
+          ctx.drawImage(element, 0, 0, width, height);
+          rasterised = true;
+        }
       } else if (element instanceof HTMLCanvasElement) {
         ctx.drawImage(element, 0, 0, width, height);
-      } else {
-        continue;
+        rasterised = true;
       }
-      const image = ctx.getImageData(0, 0, width, height);
-      segments.push({
-        elementId: 'visual-' + segments.length,
-        frame: new PixelFrame(
-          width,
-          height,
-          4,
-          new Uint8Array(image.data.buffer.slice(0) as ArrayBuffer),
-        ),
-        // Detection boxes are produced by the vision pipeline in Z1 and are not
-        // available until CR-003 lands. Emitting an empty box list is honest:
-        // the pixel route is still recorded as having run over this region.
-        boxes: [],
-        entities: [],
-      });
     } catch (error) {
-      // A tainted canvas throws. That is a FAILURE of the pixel route, not an
-      // empty region, so the frame is omitted rather than reported as clean.
+      // A tainted canvas throws on both draw and getImageData. That is a
+      // FAILURE of the pixel route, not an empty region.
       continue;
     }
+    if (!rasterised) continue;
+
+    let image: ImageData;
+    try {
+      image = ctx.getImageData(0, 0, width, height);
+    } catch (error) {
+      continue;
+    }
+
+    const origin = boundingBox(rect.left, rect.top, width, height);
+    const { boxes, entities } = bindElementBoxes(element, origin, unbound);
+
+    segments.push({
+      elementId: 'visual-' + segments.length,
+      frame: new PixelFrame(width, height, 4, new Uint8Array(image.data.buffer.slice(0) as ArrayBuffer)),
+      boxes,
+      entities,
+    });
+  }
+
+  if (unbound.length > 0) {
+    // Declared, never swallowed. A span we cannot mask is a span that will be
+    // visible, so it has to be visible in the report too.
+    console.warn(
+      `[sih] ${unbound.length} sensitive span(s) could not be bound to pixels ` +
+        `(OCR unavailable on this rung): ` +
+        unbound.map((u) => `${u.entityId}@${u.elementId}`).join(', '),
+    );
   }
   return segments;
 }
 
+/** Walk an element's text nodes, build geometry runs, detect, and bind. */
+function bindElementBoxes(
+  element: Element,
+  origin: BoundingBox,
+  unbound: UnboundSpan[],
+): { boxes: BoundingBox[]; entities: string[] } {
+  const runs = collectTextRuns(element, origin);
+  if (runs.length === 0) return { boxes: [], entities: [] };
+
+  // joinRuns, not a hand-rolled join: see RUN_SEPARATOR for the defect that
+  // made a valid Aadhaar undetectable by gluing it to the next text node.
+  const text = joinRuns(runs);
+  const findings = detect(text).findings;
+  if (findings.length === 0) return { boxes: [], entities: [] };
+
+  const bindings = bindFindings(
+    findings.map((f) => ({ entityId: f.entityId, start: f.start, end: f.end })),
+    runs,
+  );
+
+  const boxes: BoundingBox[] = [];
+  const entities: string[] = [];
+  for (const binding of bindings) {
+    if (!binding.bound) {
+      unbound.push({
+        elementId: binding.elementId,
+        entityId: binding.entityId,
+        reason: binding.reason ?? 'unbound',
+      });
+      continue;
+    }
+    boxes.push(...binding.boxes);
+    entities.push(binding.entityId);
+  }
+  return { boxes, entities };
+}
+
+
+
+/** A sensitive span that could not be tied to any pixels. */
+interface UnboundSpan {
+  readonly elementId: string;
+  readonly entityId: string;
+  readonly reason: string;
+}
+
+/**
+ * Walk an element's text nodes and ask the browser where it drew each one.
+ *
+ * `Range.getClientRects()` is the whole trick: the layout engine already knows
+ * the exact pixel rectangle of every character, and it will tell us for free.
+ * One Range per text node (rather than per character) is enough, because a node
+ * is short and its client rects already split by line.
+ *
+ * Text that is not laid out - `display:none`, detached, zero-size - yields no
+ * rects. Those runs are still emitted, with empty `rects`, so the run's
+ * characters remain in the joined string the detector scans. Dropping them
+ * would shift every subsequent offset and silently mis-mask the value that
+ * follows.
+ */
+function collectTextRuns(element: Element, origin: BoundingBox): TextRun[] {
+  const inputs: RunInput[] = [];
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+
+  while ((node = walker.nextNode()) !== null) {
+    const text = node.nodeValue ?? '';
+    if (text === '') continue;
+
+    const rects: BoundingBox[] = [];
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of Array.from(range.getClientRects())) {
+        // A zero-area rect cannot be masked, and including it would fail V-11.
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        rects.push(
+          clampToFrame(
+            toFrameLocal(boundingBox(rect.left, rect.top, rect.width, rect.height), origin),
+            { width: origin.width, height: origin.height },
+          ),
+        );
+      }
+      range.detach?.();
+    } catch (error) {
+      // A range over an exotic node can throw. The run still contributes its
+      // characters so offsets stay aligned; it simply cannot be masked.
+    }
+
+    inputs.push({ elementId: elementIdOf(element), text, rects });
+  }
+
+  // Offsets are computed by buildRuns, never here. Computing them locally is how
+  // the run-separator defect happened in the first place.
+  return buildRuns(inputs);
+}
+
+function elementIdOf(element: Element): string {
+  if (!element.id) return element.tagName.toLowerCase();
+  return element.id;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry point
