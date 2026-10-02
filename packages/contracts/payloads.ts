@@ -19,6 +19,13 @@
  */
 
 import type { SanitizationEvidence, InferenceRung } from './sanitization';
+import type { BoundingBox } from './geometry';
+
+// Re-exported so existing importers keep working while there is exactly ONE
+// declaration of the box type. payloads.ts previously declared its own, which
+// meant `privacy/pixels` and `contracts/payloads` could hold boxes that were
+// structurally identical but nominally unrelated.
+export type { BoundingBox } from './geometry';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Branded primitives — raw data cannot cross a file boundary
@@ -56,13 +63,6 @@ export type Placeholder = string;
 // ─────────────────────────────────────────────────────────────────────────────
 // Geometry
 // ─────────────────────────────────────────────────────────────────────────────
-
-export interface BoundingBox {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
 
 export type RegionSensitivity = 'SAFE' | 'REDACTED' | 'UNCERTAIN' | 'OPAQUE';
 
