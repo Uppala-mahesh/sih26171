@@ -63,9 +63,9 @@ made mechanical.
 | `FR-VLT-1...7` | `DES-ARCH-001` 5, `DES-STATE-001` 4 | `apps/backend/app/privacy/vault.py`, `packages/privacy/vault.ts` | `tests/contract/test_sanitizer_and_vault.py`, `test_vault_parity.py` | Redaction 20% |
 | `FR-EGR-1...7` | `DES-ARCH-001` 7, `SEC-BOUND-001` | `apps/backend/app/gateway/guard.py`, `packages/gateway/guard.ts` | `tests/contract/test_egress_guard.py`, `test_pixel_guard_parity.py` | PII 20% |
 | `FR-AGT-1...9` | `DES-ARCH-001` 7, `DES-STATE-001` | `packages/pipeline/orchestrator.ts` (capture, sanitize, mask, prove, guard) | `tests/contract/test_pipeline_end_to_end.py`, `benchmarks/resource_latency.py` | Latency 15% |
-| `FR-POL-1...8` | `SEC-BOUND-001` 7 | `packages/policy/engine.ts` (TypeScript only; the Python port is outstanding) | `tests/contract/test_policy_executor.py` (22 cases incl. the PI-7 injection) | Credibility |
-| `FR-EXE-1...6` | **DES-SEQ-001 NOT YET WRITTEN** | `packages/agent/executor.ts` (TypeScript only; the Python port is outstanding) | `tests/contract/test_policy_executor.py` (22 cases) | Latency 15% |
-| `FR-VER-1...5` | `DES-STATE-001` 3 | `packages/agent/verifier.ts` (TypeScript only; the Python port is outstanding, so FR-VER-4 has one runtime, not two) | `tests/contract/test_verifier.py` (0.00% false completions, 11 cases) | Visual 25% |
+| `FR-POL-1...8` | `SEC-BOUND-001` 7 | `packages/policy/engine.ts` + `apps/backend/app/policy/engine.py` | `tests/contract/test_policy_executor.py` (22 cases incl. the PI-7 injection) · `tests/contract/test_policy_parity.py` (cross-runtime) | Credibility |
+| `FR-EXE-1...6` | **DES-SEQ-001 NOT YET WRITTEN** | `packages/agent/executor.ts` + `apps/backend/app/agent/executor.py` | `tests/contract/test_policy_executor.py` (22 cases) · `tests/contract/test_policy_parity.py` (cross-runtime) | Latency 15% |
+| `FR-VER-1...5` | `DES-STATE-001` 3 | `packages/agent/verifier.ts` + `apps/backend/app/agent/verifier.py` | `tests/contract/test_verifier.py` (0.00% false completions, 11 cases) · `tests/contract/test_policy_parity.py` (cross-runtime) | Visual 25% |
 | `FR-CAP-1...9` | `DES-ARCH-001` 6, `DES-STATE-001` | `packages/vision/capability/ladder.ts` | `tests/contract/test_capability_ladder.py`, `benchmarks/resource_latency.py` | **Resources 20%** |
 | `FR-UI-1...8` | `DES-ARCH-001` 8 | `apps/extension/src/content.ts` (collector only); no sidepanel, no console | `tests/contract/test_extension_artifact.py` | - |
 | `FR-TEL-1...9` | `REQ-DATA-001` | `benchmarks/` scorecards only; no telemetry module exists | `tests/contract/` scorecard gates | **All weights** |
@@ -170,9 +170,18 @@ The baseline is accepted when **all** of the following hold:
 > (`packages/agent/executor.ts`) and `FR-VER` (`packages/agent/verifier.ts`),
 > which had previously been marked `NOT IMPLEMENTED`.
 >
-> **Caveat: those three groups are TypeScript only.** Their Python ports are
-> outstanding, so **80 of 99 are implemented on both runtimes and 19 on one**.
-> `FR-UI` is partial: the content-script collector exists, but there is no
+> ~~**Caveat: those three groups are TypeScript only.** Their Python ports are
+> outstanding, so **80 of 99 are implemented on both runtimes and 19 on one**.~~
+>
+> **Resolved.** All three are now ported to Python —
+> `apps/backend/app/policy/engine.py`, `apps/backend/app/agent/verifier.py`,
+> `apps/backend/app/agent/executor.py` — so **99 of 99 are implemented on both
+> runtimes**, enforced by `tests/contract/test_policy_parity.py`, which runs both
+> runtimes over one shared corpus (`testdata/action_plane_corpus.json`) and fails
+> the build on any divergence in decision, rule, freshness, per-check result or
+> handler invocation.
+>
+> `FR-UI` remains partial: the content-script collector exists, but there is no
 > sidepanel and no console.
 >
 > Every path in the "Implementing module" column is **checked against the
@@ -211,7 +220,7 @@ The baseline is accepted when **all** of the following hold:
 | Use cases | 17 |
 | **Functional requirements listed** | **99 / 99** (13 ranged group rows) |
 | **Functional requirements implemented** | **99 / 99** |
-| **Implemented on BOTH runtimes** | **80 / 99** - `FR-POL`, `FR-EXE`, `FR-VER` are TypeScript only |
+| **Implemented on BOTH runtimes** | **99 / 99** — `FR-POL`, `FR-EXE`, `FR-VER` ported and parity-locked |
 | **Module paths verified on disk** | **18 / 18** | — incomplete** |
 | Rubric weights mapped | **5 of 5** |
 | Audit defects mapped | **10 of 10** |

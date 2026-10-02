@@ -1,0 +1,137 @@
+{
+  "note": "Shared corpus for the ACTION PLANE (REQ-DATA-001 X-4). Both runtimes read this file and must produce identical decisions, rules and handler-invocation outcomes. Detection parity lives in parity_corpus.json.",
+  "policy": [
+    { "name": "empty rule set denies everything (FR-POL-2)", "rules": [],
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 } },
+
+    { "name": "unknown action is outside the closed set (FR-POL-3)",
+      "rules": [{ "actionType": "OBSERVE", "origins": ["https://a.test"] }],
+      "proposal": { "actionType": "EXFILTRATE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 } },
+
+    { "name": "origin not permitted (FR-POL-5)",
+      "rules": [{ "actionType": "OBSERVE", "origins": ["https://a.test"] }],
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://evil.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 } },
+
+    { "name": "payload over the ceiling",
+      "rules": [{ "actionType": "OBSERVE", "origins": ["https://a.test"] }], "maxPayloadBytes": 100,
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 500 } },
+
+    { "name": "detokenize without a binding is blocked",
+      "rules": [{ "actionType": "DETOKENIZE", "origins": ["https://a.test"] }],
+      "proposal": { "actionType": "DETOKENIZE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 } },
+
+    { "name": "detokenize with a binding is allowed",
+      "rules": [{ "actionType": "DETOKENIZE", "origins": ["https://a.test"] }],
+      "proposal": { "actionType": "DETOKENIZE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10, "boundObservationId": "obs-1" } },
+
+    { "name": "irreversible action without approval demands confirmation",
+      "rules": [{ "actionType": "CLICK", "origins": ["https://a.test"] }], "now": 1000,
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 } },
+
+    { "name": "irreversible action with a live scoped approval is allowed",
+      "rules": [{ "actionType": "CLICK", "origins": ["https://a.test"] }], "now": 1000,
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 },
+      "approval": { "scope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "issuedAt": 900, "expiresAt": 90000 }, "grantedBy": "operator" } },
+
+    { "name": "approval bound to a different element is out of scope",
+      "rules": [{ "actionType": "CLICK", "origins": ["https://a.test"] }], "now": 1000,
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 },
+      "approval": { "scope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "OTHER", "issuedAt": 900, "expiresAt": 90000 }, "grantedBy": "operator" } },
+
+    { "name": "expired approval is not a current one",
+      "rules": [{ "actionType": "CLICK", "origins": ["https://a.test"] }], "now": 999999,
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 },
+      "approval": { "scope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "issuedAt": 900, "expiresAt": 950 }, "grantedBy": "operator" } },
+
+    { "name": "externally visible transmit demands confirmation",
+      "rules": [{ "actionType": "TRANSMIT", "origins": ["https://api.test"] }], "now": 10,
+      "proposal": { "actionType": "TRANSMIT", "targetOrigin": "https://api.test", "targetElementId": "sock", "irreversible": false, "externallyVisible": true, "payloadBytes": 20 } },
+
+    { "name": "plain permitted observe is allowed and needs no scope",
+      "rules": [{ "actionType": "OBSERVE", "origins": ["https://a.test"] }],
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 } }
+  ],
+  "verify": [
+    { "name": "blocked task is BLOCKED with no checks",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "TEXT_ABSENT", "values": ["secret"] }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "t", "elements": [], "opaqueRegions": [], "text": "clean" },
+      "claimedObservationId": "obs-1", "blocked": true },
+
+    { "name": "timeout is BOUNDED_OUT",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "TEXT_ABSENT", "values": ["secret"] }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "t", "elements": [], "opaqueRegions": [], "text": "clean" },
+      "claimedObservationId": "obs-1", "boundedOut": true },
+
+    { "name": "same observation id means stale perception (FR-VER-3)",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "TEXT_ABSENT", "values": ["x"] }] },
+      "postAction": { "observationId": "obs-1", "capturedAt": 2, "title": "t", "elements": [], "opaqueRegions": [], "text": "clean" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "goal with no postcondition cannot complete",
+      "goal": { "id": "g", "description": "d", "postconditions": [] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "t", "elements": [], "opaqueRegions": [], "text": "clean" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "PUNCTUATION: unspaced needle must match a spaced haystack (the v1 defect)",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "TEXT_ABSENT", "values": ["4532015112830366"] }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "Card", "elements": [], "opaqueRegions": [], "text": "4532 0151 1283 0366" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "genuinely absent value completes",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "TEXT_ABSENT", "values": ["4532015112830366"] }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "Card", "elements": [], "opaqueRegions": [], "text": "removed" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "element present but sensitive does not satisfy ELEMENT_PRESENT",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "ELEMENT_PRESENT", "role": "button" }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "t", "elements": [{ "role": "button", "ariaLabel": "Go", "sensitive": true }], "opaqueRegions": [], "text": "" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "NAME_ABSENT fails while the name is present",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "NAME_ABSENT", "name": "Delete account" }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 2, "title": "t", "elements": [{ "role": "button", "ariaLabel": "Delete account", "sensitive": false }], "opaqueRegions": [], "text": "" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "REGIONS_OPAQUE and FRESH_AFTER both hold",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "REGIONS_OPAQUE", "regions": [1, 2] }, { "kind": "FRESH_AFTER", "notBefore": 5 }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 7, "title": "t", "elements": [], "opaqueRegions": [1, 2, 3], "text": "" },
+      "claimedObservationId": "obs-1" },
+
+    { "name": "FRESH_AFTER fails when perception predates the bound",
+      "goal": { "id": "g", "description": "d", "postconditions": [{ "kind": "FRESH_AFTER", "notBefore": 50 }] },
+      "postAction": { "observationId": "obs-2", "capturedAt": 7, "title": "t", "elements": [], "opaqueRegions": [], "text": "" },
+      "claimedObservationId": "obs-1" }
+  ],
+  "execute": [
+    { "name": "a BLOCK never reaches a handler (FR-POL-4)",
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 },
+      "decisionDetail": { "decision": "BLOCK", "rule": "deny-by-default", "rationale": "no rule permits OBSERVE" } },
+
+    { "name": "CONFIRM without an approval is UNCONFIRMED",
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 },
+      "decisionDetail": { "decision": "CONFIRM", "rule": "human-confirmation-required", "rationale": "needs", "approvalScope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "issuedAt": 0, "expiresAt": 60000 } } },
+
+    { "name": "CONFIRM with a matching unexpired approval executes",
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 },
+      "decisionDetail": { "decision": "CONFIRM", "rule": "human-confirmation-required", "rationale": "needs", "approvalScope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "issuedAt": 0, "expiresAt": 60000 } },
+      "approvalScope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "issuedAt": 0, "expiresAt": 60000 }, "startNow": 100 },
+
+    { "name": "CONFIRM with an approval bound elsewhere is UNCONFIRMED",
+      "proposal": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "irreversible": true, "externallyVisible": false, "payloadBytes": 0 },
+      "decisionDetail": { "decision": "CONFIRM", "rule": "human-confirmation-required", "rationale": "needs", "approvalScope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "btn", "issuedAt": 0, "expiresAt": 60000 } },
+      "approvalScope": { "actionType": "CLICK", "targetOrigin": "https://a.test", "targetElementId": "OTHER", "issuedAt": 0, "expiresAt": 60000 } },
+
+    { "name": "ALLOW executes the handler",
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 },
+      "decisionDetail": { "decision": "ALLOW", "rule": "permitted", "rationale": "ok" } },
+
+    { "name": "elapsed past the bound is a TIMEOUT, not a success (FR-EXE-4)",
+      "proposal": { "actionType": "OBSERVE", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 },
+      "decisionDetail": { "decision": "ALLOW", "rule": "permitted", "rationale": "ok" },
+      "timeoutMs": 100, "startNow": 0, "elapsedPerCall": 40 },
+
+    { "name": "an action with no registered handler FAILS",
+      "proposal": { "actionType": "NOT_AN_ACTION", "targetOrigin": "https://a.test", "targetElementId": "n0", "irreversible": false, "externallyVisible": false, "payloadBytes": 10 },
+      "decisionDetail": { "decision": "ALLOW", "rule": "permitted", "rationale": "ok" } }
+  ]
+}
