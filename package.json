@@ -14,7 +14,8 @@
     "test:worker": "node tests/runtime/worker_harness.mjs",
     "diagnose:browser": "node tests/runtime/chrome_diagnose.mjs",
     "probe:load": "node tests/runtime/load_unpacked_probe.mjs",
-    "verify": "npm run typecheck && npm run check:taxonomy && npm run build:parity && npm run build:extension && npm run test:worker"
+    "verify": "npm run typecheck && npm run check:taxonomy && npm run build:parity && npm run build:extension && npm run test:worker",
+    "verify:all": "node infra/verify-all.cjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
