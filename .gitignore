@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+__pycache__
+*.pyc
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+doc
+# scratch commit-message drafts
+msg.txt
+
+# Scratch dumps from live debugging sessions. These are raw observations off
+# real pages -- they hold unredacted phone numbers and screenshots of private
+# chats, which is exactly the data this project exists to keep out of sight.
+.tmp/

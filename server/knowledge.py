@@ -1,0 +1,321 @@
+"""Site-knowledge hint packs.
+
+This is the ONLY module in the system permitted to mention a domain name.
+
+What lives here is *advice for the reasoner*, never control flow. A hint pack is
+selected by hostname and pasted into the reasoner's prompt as plain English.
+The loop, policy layer, verifier, recovery handlers and executor never see it
+and never branch on a domain. If every pack were deleted the agent would still
+run -- it would just have to discover each interface from the observation alone.
+"""
+from __future__ import annotations
+
+from typing import Dict, List
+from urllib.parse import urlparse
+
+HINT_PACKS: Dict[str, str] = {
+    "web.whatsapp.com": (
+        "This is a chat application.\n"
+        "- The contact/chat search control is a button or textbox whose accessible "
+        "name mentions 'Search' -- usually 'Search or start new chat' or 'Search "
+        "input textbox'. Click it, then type the contact name. Typing a contact's "
+        "name there is a search, not a message: it is not delivered to anyone, so "
+        "it does not need the quoter.\n"
+        "- Search results and conversations are elements with role=listitem. Pick the "
+        "one whose name matches the contact, then click it to open the conversation.\n"
+        "- THE CONVERSATION IS ALREADY OPEN if an editable textbox named like "
+        "'Type a message' is present. That box is the proof. When it is there, "
+        "stop trying to open the chat and just use it.\n"
+        "- Do NOT click the contact's name in the header bar at the top of the "
+        "conversation: that opens the contact-info sidebar, it does not open the "
+        "chat. If a contact-info panel appears, you clicked the header -- close "
+        "it and go straight to the message box instead of clicking the name "
+        "again.\n"
+        "- To switch conversation, click the row in the LEFT-HAND list, not the "
+        "header.\n"
+        "- The message composer is at the bottom: role=textbox and is_editable=true "
+        "(it is contenteditable, not an input). Use the `type` verb on it.\n"
+        "- The send control's accessible name is usually 'Send'. Sending is "
+        "irreversible, so it requires user confirmation.\n"
+        "- Pressing Enter in the composer sends the message and is more reliable "
+        "than clicking the send button. Prefer keypress Enter with the composer "
+        "focused.\n"
+        "- SENDING A LINK YOU CREATED ELSEWHERE: the link has to be on the "
+        "record before it can be sent. If you `note`d it when you had it, it is "
+        "yours to send. If you did not, go back and note it -- a URL that only "
+        "ever existed on a page is refused on its way out, and no amount of "
+        "retrying the send will change that.\n"
+        "- VERIFYING A SEND: the composer EMPTIES. Predict that with\n"
+        "  expected.element_gone set to a distinctive phrase from your message -- "
+        "it is gone from the composer once sent. Do NOT predict text_contains of "
+        "your message: it is already on screen in the composer before you send, "
+        "so that prediction proves nothing and will be discarded.\n"
+        "- If a send appears not to have worked, LOOK at the composer before "
+        "trying again: if it is now empty, the message went. Sending twice is "
+        "worse than not verifying."
+    ),
+    "mail.google.com": (
+        "This is an email client.\n"
+        "- The compose control's accessible name is usually 'Compose'.\n"
+        "- The compose window contains: a 'To recipients' textbox (type the address "
+        "then press Enter to turn it into a chip), a 'Subject' textbox, and a "
+        "'Message Body' textbox which is contenteditable.\n"
+        "- The send control's accessible name is usually 'Send'. Sending is "
+        "irreversible, so it requires user confirmation.\n"
+        "- After sending, a short-lived status message containing 'Message sent' "
+        "appears; use `wait` with text_contains to verify it."
+    ),
+    "www.flipkart.com": (
+        "This is a shopping site.\n"
+        "- A login prompt overlay often appears on first load. If page_state."
+        "overlay_present is true, dismiss it before doing anything else.\n"
+        "- The search control is a textbox at the top; type the query and press Enter.\n"
+        "- Product results are a repeated grid of cards. Use the `extract` verb to "
+        "read names, prices and ratings rather than reading them one element at a time."
+    ),
+    "www.meesho.com": (
+        "This is a shopping site.\n"
+        "- The search control is a textbox at the top; type the query and press Enter.\n"
+        "- Product results are a repeated grid of cards. Use the `extract` verb to read "
+        "names, prices and ratings."
+    ),
+    "www.amazon.in": (
+        "This is a shopping site.\n"
+        "- The search control is a textbox at the top; type the query and press Enter.\n"
+        "- Product results are a repeated list of cards. Use the `extract` verb."
+    ),
+    "lms.example.edu": (
+        "This is a Moodle learning-management site.\n"
+        "- The sign-in page has textboxes named 'Username' and 'Password' and a "
+        "'Log in' button. If a credential slot exists for this site, use "
+        "fill_credential for BOTH fields (never type a password yourself), then "
+        "click 'Log in'.\n"
+        "- After signing in you land on the Dashboard ('/my/'). Courses are links "
+        "in a 'Course overview' region.\n"
+        "- An assignment page shows a 'Submission status' table and a button named "
+        "'Add submission' or 'Edit submission'.\n"
+        "- The submission form has a file picker. Clicking 'Add...' opens a chooser "
+        "dialog; prefer the drop-zone's underlying <input type=\"file\"> and use "
+        "upload_file on it directly.\n"
+        "- Saving is done with a 'Save changes' button. Some assignments then need "
+        "'Submit assignment' and a confirmation checkbox -- both are irreversible, "
+        "so they will pause for human approval.\n"
+        "- Verify by checking the Submission status row reads 'Submitted for "
+        "grading'."
+    ),
+    "meet.google.com": (
+        "This is a video-meeting site.\n"
+        "- 'New meeting' does NOT create a link. It opens a small MENU. So after "
+        "clicking it, the thing to look for is the menu -- not a link. Clicking "
+        "it twice because 'nothing happened' just closes the menu you opened.\n"
+        "- The menu offers roughly: 'Create a meeting for later', 'Start an "
+        "instant meeting', 'Schedule in Google Calendar'.\n"
+        "- For a LINK WITHOUT joining a call, choose 'Create a meeting for "
+        "later'. A dialog then shows the link as plain text of the form "
+        "meet.google.com/xxx-xxxx-xxx. Read it out of page_text and `note` it "
+        "AT ONCE -- close the dialog and the link is gone from the page.\n"
+        "- 'Start an instant meeting' puts you INSIDE a call and turns on the "
+        "camera and microphone. Someone who asked for a link did not ask for "
+        "that; prefer 'Create a meeting for later'.\n"
+        "- Predict the menu or dialog arriving: element_appears 'meeting for "
+        "later', or text_contains 'joining info'. Do NOT predict that the 'New "
+        "meeting' button is present -- it is there before and after, so it "
+        "proves nothing and will be discarded."
+    ),
+    "chatgpt.com": (
+        "This is a chat assistant.\n"
+        "- The composer is a contenteditable textbox near the bottom; use `type` "
+        "on it, then press Enter or click the send control.\n"
+        "- Replies stream in. After sending, use `wait` with text_contains for a "
+        "distinctive phrase, or wait for the stop-generating control to disappear, "
+        "before reading the answer out of page_text.\n"
+        "- Any file it produces appears as a download link in the reply; click it "
+        "and then use list_downloads to find the saved path."
+    ),
+    "earthquake.usgs.gov": (
+        "This is the Latest Earthquakes map, with a list panel beside it.\n"
+        "- THE FEED IS SET BY THE URL. Do not click through the settings menu: "
+        "navigate straight to a URL that already says what you want. The "
+        "parameters are `range` (day|week|month), `magnitude` "
+        "(all|1|2.5|4.5|significant) and `list` (true|false). For the past "
+        "day's larger quakes, that is:\n"
+        "  https://earthquake.usgs.gov/earthquakes/map/?range=day&magnitude=4.5&list=true\n"
+        "  This is one navigate instead of four clicks in a menu, and it "
+        "cannot half-apply the way a menu can.\n"
+        "- USGS offers no 4.0 threshold; 4.5 is the next one up. For 'the "
+        "biggest few of the day' that makes no difference, because the largest "
+        "quakes in any 24 hours are essentially always above 4.5. Say which "
+        "threshold you used when you report the answer.\n"
+        "- The map is a canvas. Nothing on it can be read or clicked usefully. "
+        "ALL the data is in the LIST panel -- work there and ignore the map.\n"
+        "- The page is an Angular application: the list arrives AFTER the first "
+        "load. If the first observation shows no rows, `wait` for text like "
+        "'earthquakes' or a count to appear before extracting. Do not conclude "
+        "the list is missing from one early observation.\n"
+        "- Each row reads roughly 'M 4.6 - 10 km NE of <place>' with a time. "
+        "`extract` reads these rows: the magnitude comes back as `number`, the "
+        "whole row as `text`.\n"
+        "- With the magnitude filter already applied by the URL, a single "
+        "`extract` normally returns the entire day's list, so ranking and "
+        "picking the top N is something you do YOURSELF from `number`. Do not "
+        "try to sort the page.\n"
+        "- If the list is longer than one extract, scroll the list panel and "
+        "extract again rather than guessing at what you cannot see."
+    ),
+    "docs.google.com": (
+        "This is a Google Docs/Sheets/Slides editor.\n"
+        "- IN SHEETS, THE GRID IS A CANVAS. There are no cell elements. Do not "
+        "look for a cell in the observation, do not try to `click` a cell, and "
+        "do not try to `type` into one -- none of that exists to be resolved.\n"
+        "- A brand-new spreadsheet is at https://sheets.new -- navigating there "
+        "creates one and opens it, which is faster and far more reliable than "
+        "clicking through Drive.\n"
+        "- ON A NEW SHEET, CELL A1 IS ALREADY SELECTED. So the whole job is two "
+        "actions: navigate to sheets.new, then ONE `paste_table` with the table "
+        "as tab-separated text, header row first. Do not click anything in "
+        "between -- clicking is what loses the grid's focus.\n"
+        "- Only if you need a cell OTHER than A1: click the Name Box (the small "
+        "box above the top-left of the grid, left of the formula bar, showing "
+        "something like 'A1'), `type` the cell reference, press Enter, then "
+        "paste.\n"
+        "- paste_table succeeds when the grid consumes the paste. If it reports "
+        "that nothing accepted the paste, the grid did not have focus: click "
+        "once on the grid area or use the Name Box, then retry ONCE.\n"
+        "- IF THE PASTE STILL WILL NOT LAND, `fail` AND SAY SO. Do NOT fall "
+        "back to `type`. There is no cell element to type into, so typing "
+        "lands somewhere else on the page and can still read back as though it "
+        "worked -- which turns a visible failure into a false report of a table "
+        "that was never written. A task reported as failed is recoverable; a "
+        "task reported as done when the sheet is empty is not.\n"
+        "- Never type a multi-line block (rows separated by newlines) into any "
+        "single field. A field holds one value; rows are what paste_table is "
+        "for.\n"
+        "- The first row of the pasted table is treated as a header and comes "
+        "out bold. You do not need a separate formatting step.\n"
+        "- Sheets saves by itself. There is no Save button to hunt for; "
+        "'All changes saved in Drive' in the page text is the confirmation.\n"
+        "- NAME THE SHEET BEFORE SHARING. A brand-new spreadsheet is called "
+        "'Untitled spreadsheet', and Share on an unnamed file opens a "
+        "name-it-first dialog instead of the sharing dialog. Clicking Share "
+        "again just reopens that same dialog -- if you find yourself alternating "
+        "between Share and Save, this is why. Click the title at the top left, "
+        "`type` a name, press Enter, THEN share.\n"
+        "- SHARING LINK-ACCESS: click 'Share', and in the dialog find the "
+        "'General access' row, which starts on 'Restricted'. Click it and "
+        "choose 'Anyone with the link'. Then close the dialog with 'Done'.\n"
+        "- THE SHAREABLE LINK IS THE PAGE'S OWN URL. It is already in the "
+        "observation as `url`, of the form "
+        "https://docs.google.com/spreadsheets/d/<id>/edit -- you do NOT need "
+        "the dialog's 'Copy link' button, and you could not read the clipboard "
+        "anyway. `note` that URL the moment access is set to anyone-with-link. "
+        "Until it is noted it is page data, and sending it anywhere else will "
+        "be refused.\n"
+        "- In DOCS, the body IS editable text, so `type` works there normally."
+    ),
+    "www.google.com": (
+        "This is a web search engine.\n"
+        "- The search control is a textbox named 'Search' or 'q'. Type the query then "
+        "press Enter (a `keypress` with key_combo 'Enter').\n"
+        "- Results are links; read their names before choosing which to open.\n"
+        "- A consent or cookie dialog may appear on first load; dismiss it first."
+    ),
+}
+
+# Aliases so a related hostname reuses the same pack.
+ALIASES: Dict[str, str] = {
+    "chat.openai.com": "chatgpt.com",
+    "www.chatgpt.com": "chatgpt.com",
+    "flipkart.com": "www.flipkart.com",
+    "meesho.com": "www.meesho.com",
+    "amazon.in": "www.amazon.in",
+    "google.com": "www.google.com",
+    "www.google.co.in": "www.google.com",
+    "accounts.google.com": "mail.google.com",
+    "sheets.google.com": "docs.google.com",
+    "docs.google.com.": "docs.google.com",
+    "sheets.new": "docs.google.com",
+    "www.earthquake.usgs.gov": "earthquake.usgs.gov",
+}
+
+GENERIC_HINTS = (
+    "No hint pack for this site. Work from the observation alone:\n"
+    "- Prefer elements whose role and accessible name match your current goal.\n"
+    "- If page_state.overlay_present is true, dismiss the overlay before anything else.\n"
+    "- To search, focus a textbox, type, then press Enter.\n"
+    "- For a repeated list of priced items, use `extract` instead of reading each card."
+)
+
+
+def hints_for(url: str) -> str:
+    """Return the advisory text for a URL. Never returns control flow."""
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return GENERIC_HINTS
+    if not host:
+        return GENERIC_HINTS
+    if host in HINT_PACKS:
+        return HINT_PACKS[host]
+    if host in ALIASES:
+        return HINT_PACKS[ALIASES[host]]
+    bare = host[4:] if host.startswith("www.") else host
+    if bare in ALIASES:
+        return HINT_PACKS[ALIASES[bare]]
+    for known in HINT_PACKS:
+        if host.endswith("." + known) or known.endswith("." + host):
+            return HINT_PACKS[known]
+    return GENERIC_HINTS
+
+
+def known_hosts() -> List[str]:
+    return sorted(set(list(HINT_PACKS.keys()) + list(ALIASES.keys())))
+
+
+# Start URLs for sites a command may name by name. The planner needs somewhere
+# to begin when the user says "check my <site>" without giving a URL, and that
+# is still site knowledge, so it lives here rather than in the planner prompt.
+START_URLS: Dict[str, str] = {
+    "whatsapp": "https://web.whatsapp.com/",
+    "gmail": "https://mail.google.com/",
+    "google mail": "https://mail.google.com/",
+    "chatgpt": "https://chatgpt.com/",
+    "meet": "https://meet.google.com/",
+    "amazon": "https://www.amazon.in/",
+    "flipkart": "https://www.flipkart.com/",
+    "meesho": "https://www.meesho.com/",
+    "moodle": "https://lms.example.edu/moodle/",
+    "usgs": "https://earthquake.usgs.gov/",
+    "earthquakes": "https://earthquake.usgs.gov/",
+    "sheets": "https://sheets.new/",
+    "docs": "https://docs.google.com/",
+}
+
+
+def start_url_for(command: str) -> str | None:
+    """Map a free-text command to a known start URL, or None.
+
+    Longest phrase wins so "google mail" beats "google". This is a lookup, not
+    control flow: an unrecognised command still gets a plan, it just starts from
+    wherever the browser already is.
+    """
+    low = (command or "").lower()
+    best: str | None = None
+    best_len = 0
+    for name, url in START_URLS.items():
+        if name in low and len(name) > best_len:
+            best, best_len = url, len(name)
+    return best
+
+
+def start_url_hint(command: str) -> str:
+    """Prompt fragment naming the recognised sites, built from START_URLS."""
+    names = sorted(START_URLS, key=len, reverse=True)
+    lines = [f"  {n} -> {START_URLS[n]}" for n in names]
+    matched = start_url_for(command)
+    head = (
+        "Known start URLs (use one when the command names that site):\n"
+        + "\n".join(lines)
+    )
+    if matched:
+        head += f"\nThis command names a known site; its start_url is {matched}."
+    return head

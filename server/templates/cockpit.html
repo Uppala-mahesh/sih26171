@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drishti — Agent Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/cockpit.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-orb" aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13"><path d="M8 3.2c2.6 0 4.7 1.6 5.7 3.9a.7.7 0 0 1 0 .5C12.7 10 10.6 11.6 8 11.6S3.3 10 2.3 7.6a.7.7 0 0 1 0-.5C3.3 4.8 5.4 3.2 8 3.2Z" fill="none" stroke="currentColor" stroke-width="1.15"/><circle cx="8" cy="7.6" r="2.1" fill="currentColor"/></svg></div>
+    <div class="brand-text">
+      <h1>Drishti Cockpit</h1>
+      <span>closed-loop browser agent · privacy-first</span>
+    </div>
+  </div>
+  <span class="pill" id="p-ws"><span class="dot"></span><span class="txt">cockpit: connecting</span></span>
+  <span class="pill" id="p-browser"><span class="dot"></span><span class="txt">browser: unknown</span></span>
+  <span class="pill" id="p-model"><span class="dot"></span><span class="txt">models: -</span></span>
+  <span class="spacer"></span>
+  <span class="pill" id="p-state"><span class="dot"></span><span class="txt">idle</span></span>
+  <span class="pill" id="p-task"></span>
+</header>
+
+<div id="banner" role="alert" aria-live="assertive"></div>
+
+<div class="cmdbar">
+  <label class="sr-only" for="cmd">Command for the agent</label><input id="cmd" aria-label="Command for the agent" placeholder="Tell the agent what to do, e.g. Open example.com and click the More information link"
+         autocomplete="off">
+  <button class="primary" id="run" title="Run the command (Enter)">Run</button>
+  <button class="danger" id="cancel" disabled title="Stop the running task (Esc)">Stop</button>
+  <button class="ghost" id="compliance" disabled title="A DPDP Act 2023 technical-controls report built from this task's real audit trail">Compliance report</button>
+</div>
+
+<div class="optbar">
+  <label title="High-risk actions are still classified and still logged - you just answer once, up front, instead of per action.">
+    <input type="checkbox" id="preapprove" checked aria-describedby="preapprove-hint">
+    Pre-approve this task's high-risk actions (sending, posting, paying)
+  </label>
+  <span class="hint" id="preapprove-hint" aria-live="polite">off - the agent will stop and ask before anything irreversible</span>
+</div>
+
+<div class="pipeline-wrap">
+  <div class="pipeline-label">
+    <span class="eyebrow">Live pipeline</span> <span class="loop-badge">lights up only on real events from the bus — nothing here invents progress</span>
+  </div>
+  <div class="pipeline" id="pipeline">
+    <div class="stage" data-stage="plan"><div class="stage-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.2 6.4 11.4 13 4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="stage-name">Plan</div></div>
+    <div class="stage-arrow"></div>
+    <div class="stage" data-stage="observe"><div class="stage-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.7" fill="currentColor"/></svg></div><div class="stage-name">Observe</div></div>
+    <div class="stage-arrow"></div>
+    <div class="stage" data-stage="reason"><div class="stage-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 1.9 9.5 6l4.1 1.5L9.5 9 8 13.1 6.5 9 2.4 7.5 6.5 6 8 1.9Z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg></div><div class="stage-name">Reason</div></div>
+    <div class="stage-arrow"></div>
+    <div class="stage" data-stage="policy"><div class="stage-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 1.9 13.2 4v4c0 3-2.2 5.2-5.2 6.1C5 13.2 2.8 11 2.8 8V4L8 1.9Z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="m5.9 7.9 1.5 1.5 2.7-2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="stage-name">Policy</div></div>
+    <div class="stage-arrow"></div>
+    <div class="stage" data-stage="execute"><div class="stage-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4.6 3.3 12.4 8l-7.8 4.7V3.3Z" fill="currentColor"/></svg></div><div class="stage-name">Execute</div></div>
+    <div class="stage-arrow"></div>
+    <div class="stage" data-stage="verify"><div class="stage-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.9 8.4 6.2 11.6 13.1 4.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="stage-name">Verify</div></div>
+  </div>
+</div>
+
+<div class="statstrip">
+  <div class="stat steps"><div class="stat-label">Steps</div><div class="stat-value" id="s-steps">0</div></div>
+  <div class="stat pii"><div class="stat-label">PII redacted</div><div class="stat-value" id="s-pii">0</div></div>
+  <div class="stat elapsed"><div class="stat-label">Elapsed</div><div class="stat-value" id="s-elapsed">0s</div></div>
+  <div class="stat ondevice"><div class="stat-label">On-device</div><div class="stat-value" id="s-ondevice">0%</div></div>
+  <div class="stat latency"><div class="stat-label">Last inference</div><div class="stat-value" id="s-latency">--</div></div>
+</div>
+
+
+<main>
+  <div class="col">
+    <div class="sec" style="flex:1">
+      <h2>Live event stream <span class="sub">every line is a real event from the pipeline</span></h2>
+      <div class="body" id="ticker" role="log" aria-live="polite" aria-relevant="additions" aria-label="Pipeline event stream"><div class="empty">No events yet. Give the agent a command above and every step will appear here as it really happens.</div></div>
+    </div>
+    <div class="sec sec-dec">
+      <h2>Decisions <span class="sub">the same events, expanded</span></h2>
+      <div class="body" id="dec"><div class="empty">No decisions yet.</div></div>
+    </div>
+  </div>
+
+  <div class="col col-state">
+    <!-- Always-visible state line. Everything here already exists on the
+         OBSERVATION_RECEIVED event, so nothing is invented for display. -->
+    <div class="statebar" id="statebar">
+      <div class="statebar-top">
+        <span class="verdict verdict-unknown" id="sb-verdict">no observation yet</span>
+        <span class="statebar-url" id="sb-url">—</span>
+      </div>
+      <div class="statebar-facts" id="sb-facts">
+        <span class="sb-fact muted">Waiting for the first page read.</span>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Agent state panels">
+      <button class="tab" role="tab" id="tab-plan" aria-controls="panel-plan" aria-selected="true" tabindex="0">Plan</button>
+      <button class="tab" role="tab" id="tab-meter" aria-controls="panel-meter" aria-selected="false" tabindex="-1">Perception</button>
+      <button class="tab" role="tab" id="tab-obs" aria-controls="panel-obs" aria-selected="false" tabindex="-1">Observation</button>
+      <button class="tab" role="tab" id="tab-shot" aria-controls="panel-shot" aria-selected="false" tabindex="-1">Screenshot</button>
+    </div>
+
+    <div class="tabpanels">
+      <div class="tabpanel is-active" role="tabpanel" id="panel-plan" aria-labelledby="tab-plan">
+        <div class="body" id="plan"><div class="empty">No plan yet.</div></div>
+      </div>
+      <div class="tabpanel" role="tabpanel" id="panel-meter" aria-labelledby="tab-meter" hidden>
+        <div class="body" id="meter"></div>
+        <div id="verdict-notes" class="verdict-notes" role="status" aria-live="polite"></div>
+      </div>
+      <div class="tabpanel" role="tabpanel" id="panel-obs" aria-labelledby="tab-obs" hidden>
+        <div class="body" id="obs"><div class="empty">No observation yet.</div></div>
+      </div>
+      <div class="tabpanel" role="tabpanel" id="panel-shot" aria-labelledby="tab-shot" hidden>
+        <div class="body" id="shot"><div class="empty">No screenshot captured yet. One is taken on the first step and then every few steps after.</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="modal-bg" id="modal-bg" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal">
+    <div class="mh" id="modal-title">⛊ Approval required &mdash; this action has real consequences</div>
+    <div class="mb" id="modal-body"></div>
+    <div class="mf">
+      <button class="ghost" id="deny">Cancel</button>
+      <button class="primary" id="approve">Approve</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Session credential for /ws/cockpit, injected by the server that served this
+   page. Kept in a const so it is obvious it is a per-session secret. */
+var COCKPIT_TOKEN = '__DRISHTI_COCKPIT_TOKEN__';
+/* The cockpit is a pure renderer of the event bus. It has no timers that
+   invent progress, no optimistic states, and no way to show "completed"
+   without a real TASK_COMPLETED event arriving over this socket. The
+   pipeline visualizer and stat strip below are derived the same way: every
+   highlight and every number comes out of a real event's type or payload,
+   never a guess. */
+(function () {
+  var ws = null, activeTask = null, tickerEl = document.getElementById('ticker');
+  var firstEvent = true;
+
+  var CLASS = {
+    TASK_CREATED:'act', PLAN_GENERATED:'act', OBSERVATION_RECEIVED:'dim',
+    ACTION_PROPOSED:'act', POLICY_APPROVED:'ok', POLICY_DENIED:'bad',
+    CONFIRMATION_REQUESTED:'warn', CONFIRMATION_GRANTED:'ok', CONFIRMATION_DENIED:'bad',
+    ACTION_EXECUTING:'act', ACTION_EXECUTED:'ok', ACTION_FAILED:'bad',
+    ACTION_VERIFIED:'ok', VERIFICATION_FAILED:'bad', RECOVERY_STARTED:'warn',
+    RECOVERY_COMPLETED:'warn', LOGIN_REQUIRED:'warn', LOGIN_DETECTED:'ok',
+    TASK_COMPLETED:'ok', TASK_FAILED:'bad', TASK_CANCELLED:'warn',
+    MODEL_CALL_COMPLETED:'hi', WS_CONNECTED:'ok', WS_DISCONNECTED:'bad',
+    ERROR:'bad', STATE_CHANGED:'dim', REDACTION_VERIFY_FAILED:'bad',
+    MASKING_APPLIED:'ok', DOCUMENT_READ:'dim', PAGE_READ_BY_SIGHT:'warn',
+    SECURITY_BLOCKED:'bad', LOCAL_REASON_UNAVAILABLE:'warn'
+  };
+
+  /* ---- pipeline visualizer: event type -> stage ---- */
+  var STAGE_ORDER = ['plan', 'observe', 'reason', 'policy', 'execute', 'verify'];
+  var EVENT_STAGE = {
+    TASK_CREATED:'plan', PLAN_GENERATED:'plan',
+    OBSERVATION_RECEIVED:'observe',
+    ACTION_PROPOSED:'reason',
+    POLICY_APPROVED:'policy', POLICY_DENIED:'policy',
+    CONFIRMATION_REQUESTED:'policy', CONFIRMATION_GRANTED:'policy', CONFIRMATION_DENIED:'policy',
+    ACTION_EXECUTING:'execute', ACTION_EXECUTED:'execute', ACTION_FAILED:'execute',
+    ACTION_VERIFIED:'verify', VERIFICATION_FAILED:'verify'
+  };
+  var pipelineEl = document.getElementById('pipeline');
+  var stageEls = {}, arrowEls = [];
+  STAGE_ORDER.forEach(function (s) { stageEls[s] = pipelineEl.querySelector('[data-stage="' + s + '"]'); });
+  Array.prototype.forEach.call(pipelineEl.querySelectorAll('.stage-arrow'), function (a) { arrowEls.push(a); });
+
+  function setStage(stage, blocked) {
+    var idx = STAGE_ORDER.indexOf(stage);
+    if (idx === -1) return;
+    STAGE_ORDER.forEach(function (s, i) {
+      var el = stageEls[s];
+      el.classList.remove('done', 'active', 'blocked');
+      if (i < idx) el.classList.add('done');
+      else if (i === idx) el.classList.add(blocked ? 'blocked' : 'active');
+    });
+    arrowEls.forEach(function (a, i) { a.classList.toggle('lit', i < idx); });
+  }
+  function resetPipeline() {
+    STAGE_ORDER.forEach(function (s) { stageEls[s].classList.remove('done', 'active', 'blocked'); });
+    arrowEls.forEach(function (a) { a.classList.remove('lit'); });
+    pipelineEl.classList.remove('recovering');
+  }
+
+  /* ---- stat strip: steps, PII redacted, elapsed -- all derived from real event data ----
+     On-device %% and last-inference come the same way: MODEL_CALL_COMPLETED carries the
+     real provider/model/latency for every reasoner call (including the local Ollama
+     rung), and ACTION_PROPOSED carries perception_source for the Chrome-Nano bridge
+     tier, which never touches llm.py and so never emits a MODEL_CALL_COMPLETED. */
+  var stats = {
+    steps:0, pii:0, taskStartTs:null, lastTs:null,
+    localSteps:0, cloudSteps:0, lastPayloadBytes:0,
+    lastReasonerProvider:'', lastReasonerModel:'', lastReasonerLatency:0, lastReasonerVision:false,
+    lastOcrMs:null, lastOcrRegions:0, lastVisualMs:null, lastVisualScores:0,
+    inferenceLine:'', lastObs:null
+  };
+  function resetStats() {
+    stats = {
+      steps:0, pii:0, taskStartTs:null, lastTs:null,
+      localSteps:0, cloudSteps:0, lastPayloadBytes:0,
+      lastReasonerProvider:'', lastReasonerModel:'', lastReasonerLatency:0, lastReasonerVision:false,
+      lastOcrMs:null, lastOcrRegions:0, lastVisualMs:null, lastVisualScores:0,
+      inferenceLine:'', lastObs:null
+    };
+    renderStats();
+  }
+  function formatElapsed(ms) {
+    if (!ms || ms < 0) return '0s';
+    var s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  }
+
+  /* ---- state bar: the one line that says what the agent currently sees ----
+     Every value comes from the last OBSERVATION_RECEIVED or MODEL_CALL_COMPLETED
+     event. Nothing is computed that the server did not actually measure. */
+  function renderStateBar() {
+    var o = stats.lastObs;
+    var vEl = document.getElementById('sb-verdict');
+    var uEl = document.getElementById('sb-url');
+    var fEl = document.getElementById('sb-facts');
+    if (!o) {
+      vEl.className = 'verdict verdict-unknown';
+      vEl.textContent = 'no observation yet';
+      uEl.textContent = '—';
+      fEl.innerHTML = '<span class="sb-fact muted">Waiting for the first page read.</span>';
+      return;
+    }
+    var v = o.perception_verdict || 'unknown';
+    vEl.className = 'verdict verdict-' + v;
+    vEl.textContent = v;
+    uEl.textContent = o.url || (o.title || '—');
+    uEl.title = o.url || '';
+
+    var facts = [];
+    function fact(label, value, cls) {
+      if (value === undefined || value === null || value === '') return;
+      facts.push('<span class="sb-fact' + (cls ? ' ' + cls : '') + '"><b>' +
+        esc(label) + '</b>' + esc(String(value)) + '</span>');
+    }
+    fact('dom', (o.element_count || 0) + ' nodes / ' + (o.interactive_count || 0) + ' interactive');
+    fact('walk', o.walk_ms + 'ms');
+    if (o.screenshot) fact('capture', 'masked, ' + o.sensitive_boxes + ' regions');
+    else if (o.screenshot_error) fact('capture', 'failed', 'bad');
+    if (o.ocr_regions) fact('ocr', o.ocr_regions + ' regions / ' + o.ocr_ms + 'ms');
+    if (o.visual_scores) fact('clip', o.visual_scores + ' elements / ' + o.visual_ms + 'ms');
+    if (o.qr_detected) fact('qr', o.qr_detected + ' masked');
+    var kinds = Object.keys(o.pii_redactions || {});
+    if (kinds.length) {
+      var parts = kinds.map(function (k) { return k.toLowerCase() + '×' + o.pii_redactions[k]; });
+      fact('redacted', parts.join(' '), 'human');
+    }
+    if (stats.inferenceLine) fact('', stats.inferenceLine, 'muted');
+    fEl.innerHTML = facts.length ? facts.join('') :
+      '<span class="sb-fact muted">Nothing private was found on this page.</span>';
+  }
+
+  /* ---- tabs: one panel at full height, never clipped ---- */
+  var TAB_IDS = ['tab-plan', 'tab-meter', 'tab-obs', 'tab-shot'];
+  function selectTab(id, focusIt) {
+    TAB_IDS.forEach(function (tid) {
+      var btn = document.getElementById(tid);
+      var panel = document.getElementById(btn.getAttribute('aria-controls'));
+      var on = tid === id;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.tabIndex = on ? 0 : -1;
+      panel.classList.toggle('is-active', on);
+      panel.hidden = !on;
+    });
+    if (focusIt) document.getElementById(id).focus();
+  }
+  function wireTabs() {
+    TAB_IDS.forEach(function (tid, i) {
+      var btn = document.getElementById(tid);
+      btn.addEventListener('click', function () { selectTab(tid); });
+      btn.addEventListener('keydown', function (e) {
+        var n = null;
+        if (e.key === 'ArrowRight') n = TAB_IDS[(i + 1) % TAB_IDS.length];
+        else if (e.key === 'ArrowLeft') n = TAB_IDS[(i - 1 + TAB_IDS.length) % TAB_IDS.length];
+        else if (e.key === 'Home') n = TAB_IDS[0];
+        else if (e.key === 'End') n = TAB_IDS[TAB_IDS.length - 1];
+        if (n) { e.preventDefault(); selectTab(n, true); }
+      });
+    });
+  }
+  wireTabs();
+
+  function renderStats() {
+    document.getElementById('s-steps').textContent = String(stats.steps);
+    document.getElementById('s-pii').textContent = String(stats.pii);
+    document.getElementById('s-elapsed').textContent =
+      (stats.taskStartTs && stats.lastTs) ? formatElapsed(stats.lastTs - stats.taskStartTs) : '0s';
+
+    var total = stats.localSteps + stats.cloudSteps;
+    document.getElementById('s-ondevice').textContent =
+      total ? Math.round((stats.localSteps / total) * 100) + '%' : '0%';
+
+    var latEl = document.getElementById('s-latency');
+    latEl.textContent = stats.lastReasonerLatency ? Math.round(stats.lastReasonerLatency) + 'ms' : '--';
+
+    // Inference and on-device timings now live on the state bar's fact row,
+    // rather than in a separate strip that duplicated it.
+    var inferenceBits = [];
+    if (stats.lastReasonerProvider) {
+      var where = stats.lastReasonerProvider === 'ollama' ? 'on-device (ollama)' : 'cloud';
+      inferenceBits.push('reasoner ' + where + ' ' + stats.lastReasonerProvider + '/' +
+        stats.lastReasonerModel +
+        (stats.lastReasonerVision ? ' (vision)' : ' (text)') +
+        ' ' + Math.round(stats.lastReasonerLatency) + 'ms' +
+        (stats.lastPayloadBytes ? ', ' + Math.round(stats.lastPayloadBytes / 1024) + 'KB' : ''));
+    } else if (total) {
+      inferenceBits.push(stats.localSteps + ' step(s) decided on-device, ' +
+        stats.cloudSteps + ' in the cloud');
+    }
+    if (stats.lastOcrMs !== null) {
+      inferenceBits.push('OCR ' + stats.lastOcrMs + 'ms / ' + stats.lastOcrRegions + ' words');
+    }
+    if (stats.lastVisualMs !== null) {
+      inferenceBits.push('CLIP ' + stats.lastVisualMs + 'ms / ' + stats.lastVisualScores + ' elements');
+    }
+    if (inferenceBits.length) {
+      stats.inferenceLine = inferenceBits.join(' · ');
+      renderStateBar();
+    }
+  }
+  function trackStats(e) {
+    var ts = e.ts ? new Date(e.ts).getTime() : NaN;
+    if (e.type === 'TASK_CREATED') { resetStats(); if (!isNaN(ts)) stats.taskStartTs = ts; }
+    if (!isNaN(ts)) stats.lastTs = ts;
+    if (e.step) stats.steps = e.step;
+    if (e.type === 'OBSERVATION_RECEIVED') {
+      var op = e.payload || {};
+      var red = op.pii_redactions || {};
+      var n = 0;
+      Object.keys(red).forEach(function (k) { n += Number(red[k]) || 0; });
+      stats.pii += n;
+      if (op.ocr_ms !== undefined && op.ocr_ms !== null) {
+        stats.lastOcrMs = op.ocr_ms;
+        stats.lastOcrRegions = op.ocr_regions || 0;
+      }
+      if (op.visual_ms !== undefined && op.visual_ms !== null) {
+        stats.lastVisualMs = op.visual_ms;
+        stats.lastVisualScores = op.visual_scores || 0;
+      }
+      // The state bar renders from this; it never recomputes anything.
+      stats.lastObs = op;
+    }
+    if (e.type === 'MODEL_CALL_COMPLETED') {
+      var mp = e.payload || {};
+      if (mp.role === 'reasoner') {
+        stats.lastReasonerProvider = mp.provider || '';
+        stats.lastReasonerModel = mp.model || '';
+        stats.lastReasonerLatency = mp.latency_ms || 0;
+        stats.lastReasonerVision = !!mp.vision;
+        // Real byte counts already on this event -- not estimated, not a
+        // guess: chars_in is the exact digest sent, image_bytes the exact
+        // base64 screenshot size when one was attached.
+        stats.lastPayloadBytes = (mp.chars_in || 0) + (mp.image_bytes || 0);
+      }
+    }
+    if (e.type === 'ACTION_PROPOSED') {
+      var src = (e.payload || {}).perception_source || '';
+      if (src.indexOf('local') === 0) {
+        stats.localSteps++;
+      } else if (src === 'vision-ladder' || src === 'cloud') {
+        if (stats.lastReasonerProvider === 'ollama') stats.localSteps++;
+        else stats.cloudSteps++;
+      }
+    }
+    renderStats();
+  }
+
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function clock(ts) {
+    if (!ts) return '--:--:--';
+    var d = new Date(ts);
+    return isNaN(d) ? '--:--:--' : d.toTimeString().slice(0, 8);
+  }
+  function set(id, txt, cls) {
+    var el = document.getElementById(id);
+    var txtEl = el.querySelector('.txt');
+    if (txtEl) txtEl.textContent = txt; else el.textContent = txt;
+    el.className = 'pill' + (cls ? ' ' + cls : '');
+  }
+
+  /* ---- one-line summary per event type; strictly from the payload ---- */
+  function describe(e) {
+    var p = e.payload || {};
+    switch (e.type) {
+      case 'TASK_CREATED': return p.command;
+      case 'PLAN_GENERATED': return p.objective + ' - ' + (p.steps || []).length + ' steps'
+        + (p.start_url ? ' - start ' + p.start_url : '');
+      case 'OBSERVATION_RECEIVED':
+        return p.url + '  [' + (p.perception_verdict || '?') + ' / '
+          + p.interactive_count + ' interactive / ' + p.element_count
+          + ' dom, ' + p.walk_ms + 'ms'
+          + (p.overlay_present ? ', overlay' : '')
+          + (p.login_wall ? ', LOGIN WALL' : '') + ']';
+      case 'ACTION_PROPOSED':
+        return p.action + ' -> ' + (p.preview || '') + '  (conf ' + p.confidence + ') ' + (p.reason || '');
+      case 'POLICY_APPROVED': return p.action + ' allowed [' + (p.decision.rules_fired || []).join(', ') + ']';
+      case 'POLICY_DENIED': return p.action + ' REFUSED: ' + p.decision.reason;
+      case 'CONFIRMATION_REQUESTED': return 'human approval needed for: ' + p.preview;
+      case 'CONFIRMATION_GRANTED': return 'human approved: ' + p.preview;
+      case 'CONFIRMATION_DENIED': return p.reason;
+      case 'ACTION_EXECUTING': return p.preview || p.action;
+      case 'ACTION_EXECUTED': return p.action + ' done ' + short(p.result);
+      case 'ACTION_FAILED': return p.action + ' attempt ' + p.attempt + ': ' + p.error;
+      case 'ACTION_VERIFIED': return p.action + ' VERIFIED: ' + (p.verdict.signals || []).join(' | ');
+      case 'VERIFICATION_FAILED':
+        return (p.reason ? p.reason : (p.verdict ? p.verdict.reason : '')) +
+          (p.verdict && p.verdict.signals ? ' | ' + p.verdict.signals.join(' | ') : '');
+      case 'RECOVERY_STARTED': return 'triggered by: ' + p.trigger;
+      case 'RECOVERY_COMPLETED': return (p.handler || 'none') + ' - ' + p.detail;
+      case 'LOGIN_REQUIRED': return p.app + ' (' + p.kind + ') - ' + p.hint;
+      case 'LOGIN_DETECTED': return p.message + ' ' + p.url;
+      case 'TASK_COMPLETED': return p.summary;
+      case 'TASK_FAILED': return p.error;
+      case 'TASK_CANCELLED': return p.reason;
+      case 'MODEL_CALL_COMPLETED':
+        return p.role + ' via ' + p.provider + '/' + p.model + ' ' + p.latency_ms + 'ms'
+          + (p.fallbacks_before ? ' (after ' + p.fallbacks_before + ' provider failure(s))' : '');
+      case 'WS_CONNECTED': return 'extension session ' + p.session_id + ' (' + p.note + ')';
+      case 'WS_DISCONNECTED': return 'extension went away; it will reconnect';
+      case 'ERROR': return p.error;
+      case 'STATE_CHANGED': return p.state + (p.detail ? ' - ' + p.detail : '');
+      case 'REDACTION_VERIFY_FAILED':
+        return 'VERIFY FAILED — leaked kind(s): ' + (p.kinds || []).join(', ') + ' — ' + p.detail;
+      case 'MASKING_APPLIED': {
+        var red = p.pii_redactions || p;
+        var kinds = Object.keys(red).filter(function (k) { return k !== 'pii_total'; });
+        var parts = kinds.map(function (k) { return k.toLowerCase() + '×' + red[k]; });
+        var regions = (p.masked_regions || []).length;
+        return (parts.length ? parts.join(' ') : 'nothing matched') +
+          (regions ? ' — ' + regions + ' region(s) blacked out' : '');
+      }
+      case 'DOCUMENT_READ':
+        return 'read ' + (p.pages || p.chars || 0) + ' page(s) from a document the page cannot expose as text';
+      case 'PAGE_READ_BY_SIGHT':
+        return 'page is closed to extensions — read it from a capture instead' +
+          (p.mask_note ? ' (could not be masked: ' + p.mask_note + ')' : '');
+      case 'SECURITY_BLOCKED':
+        return 'blocked by the capability gate: ' + (p.reason || p.error || 'page text cannot be typed directly');
+      case 'LOCAL_REASON_UNAVAILABLE':
+        return 'Chrome built-in model unavailable — ' + (p.reason || 'falling back to the provider chain');
+      default: return JSON.stringify(p).slice(0, 220);
+    }
+  }
+  function short(r) {
+    if (!r || typeof r !== 'object') return '';
+    var bits = [];
+    if (r.to) bits.push('-> ' + r.to);
+    if (r.from && r.to) bits.push('(from ' + r.from + ')');
+    if (r.items) bits.push(r.items.length + ' items');
+    if (r.verified !== undefined) bits.push('readback verified=' + r.verified);
+    if (r.strategy) bits.push(r.strategy);
+    if (r.tab_id !== undefined) bits.push('tab ' + r.tab_id);
+    return bits.join(' ');
+  }
+
+  function push(e) {
+    if (firstEvent) { tickerEl.innerHTML = ''; firstEvent = false; }
+    var atBottom = tickerEl.scrollHeight - tickerEl.scrollTop - tickerEl.clientHeight < 60;
+    var row = document.createElement('div');
+    row.className = 'ev';
+    row.innerHTML = '<span class="t">' + clock(e.ts) + '</span>'
+      + '<span class="n ' + (CLASS[e.type] || 'dim') + '">' + esc(e.type) + '</span>'
+      + '<span class="d">' + esc(describe(e)) + '</span>';
+    tickerEl.appendChild(row);
+    while (tickerEl.children.length > 500) tickerEl.removeChild(tickerEl.firstChild);
+    if (atBottom) tickerEl.scrollTop = tickerEl.scrollHeight;
+  }
+
+  function renderPlan(p) {
+    var h = '<div class="plan-objective">' + esc(p.objective) + '</div>';
+    (p.steps || []).forEach(function (s) {
+      h += '<div class="plan-step" data-n="' + s.n + '">' + esc(s.goal)
+        + (s.done_when ? '<div class="dw">done when: ' + esc(s.done_when) + '</div>' : '') + '</div>';
+    });
+    if (p.start_url) h += '<div class="plan-start">start: <code>'
+      + esc(p.start_url) + '</code></div>';
+    document.getElementById('plan').innerHTML = h;
+  }
+
+  /* The exposure meter: how much of THIS observation was actually perceived,
+     and by which path. SIH26171 weights visual-context accuracy at 25% and
+     until now nothing on screen showed it. Every number below comes from the
+     same observation fields the verdict is derived from -- DOM element counts,
+     the on-device OCR/CLIP passes, and whether a capture even happened. The
+     hatched remainder is the honest part: what no pass covered. */
+  function renderMeter(p) {
+    var v = p.perception_verdict || 'unknown';
+    var hadShot = !!p.screenshot || (p.ocr_ms !== undefined && p.ocr_ms !== null);
+    var pixelWork = (p.ocr_regions || 0) + (p.visual_scores || 0);
+
+    // DOM coverage is whatever the walker actually returned; pixels only count
+    // when a pass really ran and produced something.
+    var dom = Math.max(1, p.interactive_count || 0);
+    var pixel = hadShot ? pixelWork : 0;
+    var domPct, pixelPct;
+    if (pixel > 0 && pixel >= dom) { domPct = 28; pixelPct = 72; }
+    else if (pixel > 0) {
+      pixelPct = Math.max(18, Math.round((pixel / (dom + pixel)) * 100));
+      domPct = 100 - pixelPct;
+    } else if (hadShot) { domPct = 72; pixelPct = 28; }
+    else { domPct = 100; pixelPct = 0; }
+    var blankPct = 100 - domPct - pixelPct;
+
+    var h = '<div class="meter">'
+      + '<div class="meter-head">'
+      + '<span class="meter-title">Perception coverage</span>'
+      + '<span class="verdict verdict-' + esc(v) + '">' + esc(v) + '</span>'
+      + '</div>'
+      + '<div class="meter-track">'
+      + '<span class="meter-seg dom" style="width:' + domPct + '%"></span>'
+      + '<span class="meter-seg pixel" style="width:' + pixelPct + '%"></span>'
+      + '<span class="meter-seg blank" style="width:' + blankPct + '%"></span>'
+      + '</div>'
+      + '<div class="meter-key">'
+      + '<span><i class="dom"></i>DOM text ' + domPct + '%</span>'
+      + '<span><i class="pixel"></i>pixels ' + pixelPct + '%</span>'
+      + '<span><i class="blank"></i>not covered ' + blankPct + '%</span>'
+      + '</div></div>';
+    document.getElementById('meter').innerHTML = h;
+    setVerdict(v, p.perception_notes || []);
+  }
+
+  function renderObs(p) {
+    var rows = [
+      ['url', p.url], ['title', p.title],
+      ['interactive', p.interactive_count + ' of ' + p.element_count + ' dom nodes'],
+      ['walk', p.walk_ms + ' ms'],
+      ['overlay', p.overlay_present ? 'yes' : 'no'],
+      ['loading', p.loading ? 'yes' : 'no'],
+      ['login wall', p.login_wall ? (p.login_wall.app + ' / ' + p.login_wall.kind) : 'none'],
+      ['pii redacted', Object.keys(p.pii_redactions || {}).length
+        ? JSON.stringify(p.pii_redactions) : 'none found'],
+      ['masked boxes', String(p.sensitive_boxes)],
+      ['qr masked', String(p.qr_detected || 0)],
+      ['tabs', String((p.tabs || []).length)]
+    ];
+    var h = '<dl class="kv">';
+    rows.forEach(function (r) { h += '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; });
+    h += '</dl>';
+    document.getElementById('obs').innerHTML = h;
+    renderMeter(p);
+    if (p.screenshot) showShot(p.screenshot);
+    else if (p.screenshot_error) showShotError(p.screenshot_error);
+  }
+
+  /* What this step actually PROVED, as opposed to what it attempted.
+     The verdict badge itself is rendered inside the exposure meter; this
+     writes the plain-language explanation underneath it. A green state is
+     only ever shown for a genuinely verified observation. */
+  function setVerdict(v, notes) {
+    var n = document.getElementById('verdict-notes');
+    if (!n) return;
+    n.textContent = notes && notes.length ? notes.join(' ') : '';
+  }
+
+  function showShot(b64) {
+    document.getElementById('shot').innerHTML =
+      '<img alt="screenshot with sensitive regions blacked out" src="data:image/jpeg;base64,' + b64 + '">';
+  }
+
+  function showShotError(message) {
+    document.getElementById('shot').innerHTML =
+      '<div class="empty danger-text">Redacted screenshot unavailable: '
+      + esc(message) + '</div>';
+  }
+
+  var decEl = document.getElementById('dec'), decFirst = true;
+  function renderDecision(e) {
+    if (decFirst) { decEl.innerHTML = ''; decFirst = false; }
+    var p = e.payload, d = p.decision || {};
+    var card = document.createElement('div');
+    card.className = 'card ' + esc(d.risk || 'low');
+
+    // Rules are the audit trail of WHY, so they get their own row as chips
+    // rather than being folded into a sentence nobody scans.
+    var rules = d.rules_fired || [];
+    var chips = rules.length
+      ? rules.map(function (r) { return '<span class="rule-chip">' + esc(r) + '</span>'; }).join('')
+      : '<span class="rule-chip muted">no rule fired</span>';
+
+    card.innerHTML =
+      '<div class="hdr">'
+      + '<span class="verb">' + esc(p.action) + '</span>'
+      + '<span class="badge ' + esc(d.risk || 'low') + '">' + esc(d.decision || '') + '</span>'
+      + '<span class="grow"></span>'
+      + '<span class="stamp">' + clock(e.ts) + '</span>'
+      + '</div>'
+      + '<div class="reason">' + esc(d.reason || '') + '</div>'
+      + '<div class="rules">' + chips + '</div>';
+    decEl.insertBefore(card, decEl.firstChild);
+    while (decEl.children.length > 40) decEl.removeChild(decEl.lastChild);
+  }
+
+  /* ---- confirmation modal ---- */
+  var modalBg = document.getElementById('modal-bg');
+function openModal(p) {
+    /* This is the highest-stakes moment in the product: the one place a person
+       can stop an irreversible action. So the order is fixed and deliberate --
+       WHAT will happen first, WHERE, WHY the policy fired, and only then the
+       buttons. The screenshot, when present, is the redacted capture. */
+    var h = '<p class="modal-lede">The agent wants to perform an action the policy '
+      + 'layer classified as <b class="risk-word">high risk</b>. Nothing happens '
+      + 'until you decide.</p>'
+      + '<div class="modal-what" id="modal-what">' + esc(p.preview) + '</div>';
+    if (p.text_preview) {
+      h += '<div class="modal-label">Text it will enter</div>'
+        + '<div class="preview">' + esc(p.text_preview) + '</div>';
+    }
+    h += '<dl class="kv modal-kv">'
+      + '<dt>page</dt><dd>' + esc(p.url) + '</dd>'
+      + '<dt>target</dt><dd>' + esc(p.target_name || '-') + '</dd>'
+      + '<dt>agent reason</dt><dd>' + esc(p.reason) + '</dd>'
+      + '<dt>rules fired</dt><dd><code>' + esc(((p.decision || {}).rules_fired || []).join(', ') || 'none') + '</code></dd>'
+      + '<dt>timeout</dt><dd>' + esc(p.timeout_s) + 's, then it cancels itself</dd></dl>';
+    if (p.screenshot) {
+      h += '<div class="modal-label">Page as the agent saw it, sensitive regions blacked out</div>'
+        + '<img alt="page at the moment of the request, with sensitive regions blacked out" '
+        + 'src="data:image/jpeg;base64,' + p.screenshot + '">';
+    }
+    document.getElementById('modal-body').innerHTML = h;
+    modalBg.classList.add('show');
+    // Move focus into the dialog so a keyboard user is not left behind it.
+    var approve = document.getElementById('approve');
+    if (approve) approve.focus();
+  }
+  function closeModal() {
+    modalBg.classList.remove('show');
+    var cmd = document.getElementById('cmd');
+    if (cmd) cmd.focus();
+  }
+
+  document.getElementById('approve').onclick = function () {
+    send('CONFIRMATION_GRANTED', { task_id: activeTask }); closeModal();
+  };
+  document.getElementById('deny').onclick = function () {
+    send('CONFIRMATION_DENIED', { task_id: activeTask }); closeModal();
+  };
+
+  function banner(text) {
+    var b = document.getElementById('banner');
+    if (!text) { b.style.display = 'none'; return; }
+    b.textContent = text; b.style.display = 'block';
+  }
+
+  /* ---- dispatch ---- */
+  function handle(e) {
+    if (e.type !== 'PONG') push(e);
+    trackStats(e);
+    if (e.task_id) {
+      activeTask = e.task_id; set('p-task', e.task_id);
+      document.getElementById('compliance').disabled = false;
+    }
+    var p = e.payload || {};
+
+    if (e.type === 'TASK_CREATED') resetPipeline();
+    var stage = EVENT_STAGE[e.type];
+    if (stage) setStage(stage, e.type === 'POLICY_DENIED' || e.type === 'ACTION_FAILED' || e.type === 'VERIFICATION_FAILED');
+    if (e.type === 'RECOVERY_STARTED') pipelineEl.classList.add('recovering');
+    if (e.type === 'RECOVERY_COMPLETED' || (stage && stage !== 'execute')) pipelineEl.classList.remove('recovering');
+
+    switch (e.type) {
+      case 'PLAN_GENERATED': renderPlan(p); break;
+      case 'OBSERVATION_RECEIVED': renderObs(p); break;
+      case 'POLICY_APPROVED':
+      case 'POLICY_DENIED': renderDecision(e); break;
+      case 'CONFIRMATION_REQUESTED': openModal(p); break;
+      case 'CONFIRMATION_GRANTED':
+      case 'CONFIRMATION_DENIED': closeModal(); break;
+      case 'LOGIN_REQUIRED':
+        banner('Sign-in needed on ' + p.app + ': ' + p.hint
+          + '  The agent is watching and will continue by itself.');
+        break;
+      case 'LOGIN_DETECTED': banner(''); break;
+      case 'REDACTION_VERIFY_FAILED':
+        banner('⚠ VERIFY caught a redaction miss — on-device re-OCR read '
+          + (p.kinds || []).join(', ') + ' off a screenshot that was supposed to be blacked '
+          + 'out. That screenshot was withheld, not sent. Fail-closed, as designed.');
+        break;
+      case 'STATE_CHANGED':
+        set('p-state', p.state, p.state === 'FAILED' ? 'off'
+          : (p.state === 'COMPLETED' ? 'on' : ''));
+        document.getElementById('cancel').disabled =
+          ['COMPLETED', 'FAILED', 'CANCELLED'].indexOf(p.state) !== -1;
+        // A finished task must not leave the rail lit on whatever stage it
+        // happened to stop at. It reads as "still working" and it isn't.
+        if (['COMPLETED', 'FAILED', 'CANCELLED'].indexOf(p.state) !== -1) {
+          resetPipeline();
+        }
+        break;
+      case 'WS_CONNECTED': set('p-browser', 'browser: connected', 'on'); break;
+      case 'WS_DISCONNECTED': set('p-browser', 'browser: disconnected', 'off'); break;
+      case 'TASK_COMPLETED':
+      case 'TASK_FAILED':
+      case 'TASK_CANCELLED':
+        document.getElementById('run').disabled = false;
+        document.getElementById('cancel').disabled = true;
+        pipelineEl.classList.remove('recovering');
+        banner('');
+        break;
+    }
+  }
+
+  function send(type, payload) {
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ v: 1, type: type, ts: new Date().toISOString(), payload: payload || {} }));
+    }
+  }
+
+  function connect() {
+    // /ws/cockpit authenticates via an `auth.<token>` subprotocol, minted by the
+    // server when it served this page. Sending it is what turns "reconnecting"
+    // into "live".
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://')
+      + location.host + '/ws/cockpit',
+      ['drishti.v1', 'auth.' + COCKPIT_TOKEN]);
+    ws.onopen = function () { set('p-ws', 'cockpit: live', 'on'); };
+    ws.onclose = function (ev) {
+      set('p-ws', ev.code === 4401 ? 'cockpit: unauthorised' : 'cockpit: reconnecting', 'off');
+      setTimeout(connect, 1500);
+    };
+    ws.onmessage = function (ev) {
+      var m = JSON.parse(ev.data);
+      if (m.type === 'HELLO') {
+        set('p-browser', 'browser: ' + (m.payload.browser_connected ? 'connected' : 'disconnected'),
+          m.payload.browser_connected ? 'on' : 'off');
+        set('p-model', 'models: ' + (m.payload.model_chain || []).join(' > '));
+        (m.payload.replay || []).forEach(handle);
+        // A screenshot event may have fallen outside the bounded replay window
+        // while the cockpit was closed. The active task snapshot is the
+        // authoritative fallback, so reconnecting never leaves this card blank.
+        var snap = m.payload.snapshot || {};
+        if (snap.last_screenshot) showShot(snap.last_screenshot);
+        return;
+      }
+      handle(m);
+    };
+  }
+
+  var preapprove = document.getElementById('preapprove');
+  preapprove.onchange = function () {
+    var h = document.getElementById('preapprove-hint');
+    h.textContent = preapprove.checked
+      ? 'ARMED - high-risk actions run without stopping, and every one is still logged'
+      : 'off - the agent will stop and ask before anything irreversible';
+    h.className = 'hint' + (preapprove.checked ? ' armed' : '');
+  };
+  preapprove.onchange();
+
+
+  document.getElementById('run').onclick = function () {
+    var v = document.getElementById('cmd').value.trim();
+    if (!v) return;
+    document.getElementById('run').disabled = true;
+    send('TASK_CREATE', { command: v, pre_approved: preapprove.checked });
+  };
+  document.getElementById('cmd').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('run').click();
+  });
+
+  /* Global keys. An operator watches this for long stretches, so the three
+     things they do most should never require reaching for the mouse. */
+  document.addEventListener('keydown', function (e) {
+    // Never steal keys from a field the operator is typing in.
+    var tag = (e.target && e.target.tagName) || '';
+    var typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
+
+    if (e.key === 'Escape') {
+      var bg = document.getElementById('modal-bg');
+      if (bg && bg.classList.contains('show')) { closeModal(); return; }
+      if (typing) { e.target.blur(); return; }
+      if (activeTask) document.getElementById('cancel').click();
+      return;
+    }
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    // "/" focuses the command field, the way most operator consoles behave.
+    if (e.key === '/') { e.preventDefault(); document.getElementById('cmd').focus(); }
+  });
+  document.getElementById('compliance').onclick = function () {
+    if (activeTask) window.open('/tasks/' + activeTask + '/compliance-report?format=html', '_blank');
+  };
+
+  document.getElementById('cancel').onclick = function () {
+    send('TASK_CANCEL', { task_id: activeTask });
+  };
+
+  // The popup can hand us a command to prefill via the URL fragment.
+  if (location.hash.length > 1) {
+    try {
+      document.getElementById('cmd').value = decodeURIComponent(location.hash.slice(1));
+    } catch (e) { /* leave it empty */ }
+    history.replaceState(null, '', location.pathname);
+  }
+  document.getElementById('cmd').focus();
+
+  connect();
+  setInterval(function () { send('PING', {}); }, 25000);
+})();
+</script>
+</body>
+</html>

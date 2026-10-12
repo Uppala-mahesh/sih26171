@@ -1,0 +1,564 @@
+"""FastAPI app: the brain's front door.
+
+Two WebSockets:
+    /ws/agent    the Chrome extension  (bridge RPC + keepalive)
+    /ws/cockpit  the operator UI       (event stream + task control)
+
+Plus a handful of HTTP endpoints for health, audit retrieval and the fixtures
+used by the policy demonstration.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import secrets
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from pydantic import BaseModel
+
+from . import compliance, config, llm
+from .browser_bridge import bridge
+from .events import audit_path, bus, verify_audit_chain
+from .knowledge import known_hosts
+from .loop import registry
+from .runtime import InvalidSessionToken, runtimes
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Startup: pre-warm the shared model-API HTTP connection pool so the first
+    task does not pay the TCP + TLS handshake on top of its own model latency.
+    Shutdown: release the pool gracefully.
+    """
+    await llm.warmup()
+    yield
+    await llm.aclose()
+
+
+app = FastAPI(title="Drishti", version="2.0.0", lifespan=_lifespan)
+
+_PUBLIC_PREFIXES = ("/fixtures/",)
+_PUBLIC_PATHS = {"/", "/cockpit", "/cockpit.css", "/privacy", "/health", "/agent-content.js", "/docs", "/openapi.json"}
+
+
+def _websocket_token(socket: WebSocket) -> str:
+    """Read the bearer credential from a WebSocket protocol, not its URL."""
+    for protocol in socket.headers.get("sec-websocket-protocol", "").split(","):
+        protocol = protocol.strip()
+        if protocol.startswith("auth."):
+            return protocol[5:]
+    return ""
+
+
+@app.middleware("http")
+async def bind_authenticated_runtime(request: Request, call_next):
+    """Every private HTTP request executes inside its owner's runtime."""
+    path = request.url.path
+    if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        return await call_next(request)
+    authorization = request.headers.get("authorization", "")
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    try:
+        # Same reasoning as ws_cockpit: an operator request must run against
+        # the browser that is actually connected, or it reaches an empty bridge.
+        runtime = runtimes.operator_runtime(token)
+    except InvalidSessionToken:
+        return JSONResponse({"detail": "authentication required"}, status_code=401)
+    with runtime.activate():
+        return await call_next(request)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+TEMPLATES = Path(__file__).parent / "templates"
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _read(directory: Path, name: str) -> str:
+    path = directory / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="%s not found" % name)
+    return path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# HTTP
+# ---------------------------------------------------------------------------
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/cockpit")
+
+
+@app.get("/cockpit", response_class=HTMLResponse)
+async def cockpit():
+    # The cockpit is served on the same origin as /ws/cockpit, which demands an
+    # `auth.<token>` subprotocol. A browser cannot invent one, so mint a session
+    # token here and hand it to the page; the page sends it on the socket.
+    # Without this the socket is closed 4401 on every attempt and the cockpit
+    # just sits on "reconnecting" forever.
+    token = secrets.token_urlsafe(32)
+    try:
+        runtimes.get(token)
+    except InvalidSessionToken:  # pragma: no cover - defensive
+        return HTMLResponse("<h1>cockpit unavailable</h1>", status_code=500)
+    page = _read(TEMPLATES, "cockpit.html")
+    page = page.replace("__DRISHTI_COCKPIT_TOKEN__", token)
+    return HTMLResponse(page)
+
+
+@app.get("/cockpit.css")
+async def cockpit_styles():
+    return FileResponse(TEMPLATES / "cockpit.css", media_type="text/css")
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy():
+    return HTMLResponse(_read(TEMPLATES, "privacy.html"))
+
+
+@app.get("/health")
+async def health():
+    return {
+        "ok": True,
+        "model_chain": llm.chain_names(),
+        "sessions": runtimes.session_count,
+        "guards": {
+            "max_steps": config.MAX_STEPS,
+            "wall_clock_s": config.WALL_CLOCK_S,
+            "confirm_timeout_s": config.CONFIRM_TIMEOUT_S,
+            "login_timeout_s": config.LOGIN_TIMEOUT_S,
+            "screenshot_every": config.SCREENSHOT_EVERY,
+        },
+    }
+
+
+@app.get("/health/models")
+async def health_models():
+    """Probe every configured provider for real. Slow on purpose."""
+    return await llm.health()
+
+
+@app.get("/tasks")
+async def list_tasks():
+    return {"active": registry.active_task_id, "tasks": registry.list()}
+
+
+@app.get("/tasks/{task_id}")
+async def get_task(task_id: str):
+    task = registry.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="no such task")
+    return task.snapshot()
+
+
+@app.get("/tasks/{task_id}/audit", response_class=PlainTextResponse)
+async def get_audit(task_id: str):
+    if registry.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="no such task")
+    path = audit_path(task_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no audit file for %s" % task_id)
+    return PlainTextResponse(path.read_text(encoding="utf-8"))
+
+
+@app.get("/tasks/{task_id}/audit/verify")
+async def get_audit_verify(task_id: str):
+    if registry.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="no such task")
+    """Recompute the audit file's hash chain from scratch and say whether it
+    still matches -- tamper-evidence a reader can check, not just a claim."""
+    result = verify_audit_chain(task_id)
+    if "error" in result and result.get("lines", 0) == 0 and not audit_path(task_id).exists():
+        raise HTTPException(status_code=404, detail="no audit file for %s" % task_id)
+    return result
+
+
+@app.get("/tasks/{task_id}/compliance-report")
+async def get_compliance_report(task_id: str, format: str = "json"):
+    if registry.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="no such task")
+    """A DPDP Act 2023 technical-controls report built from this task's own
+    audit trail -- real redaction/verification/policy counts and a freshly
+    recomputed hash-chain check, not a static claim. `?format=html` returns a
+    printable page; anything else returns the same data as JSON."""
+    report = compliance.generate_report(task_id)
+    if not report.get("found"):
+        raise HTTPException(status_code=404, detail="no audit file for %s" % task_id)
+    if format == "html":
+        return HTMLResponse(compliance.render_html(report))
+    return report
+
+
+@app.get("/tasks/{task_id}/trace")
+async def get_trace(task_id: str):
+    if registry.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="no such task")
+    """The URL-transition trace: the evidence that real navigation happened."""
+    path = audit_path(task_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no audit file for %s" % task_id)
+    trace = []
+    last_url = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            env = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if env.get("type") != "OBSERVATION_RECEIVED":
+            continue
+        url = env["payload"].get("url")
+        if url and url != last_url:
+            trace.append({
+                "ts": env["ts"],
+                "step": env["step"],
+                "url": url,
+                "title": env["payload"].get("title"),
+                "interactive_count": env["payload"].get("interactive_count"),
+                "element_count": env["payload"].get("element_count"),
+            })
+            last_url = url
+    return {"task_id": task_id, "url_transitions": trace, "count": len(trace)}
+
+
+class StartBody(BaseModel):
+    command: str
+
+
+@app.post("/tasks")
+async def start_task(body: StartBody):
+    if not body.command.strip():
+        raise HTTPException(status_code=400, detail="command is empty")
+    try:
+        task = await registry.start(body.command.strip())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"task_id": task.task_id, "state": task.state}
+
+
+@app.get("/agent-content.js")
+async def serve_walker():
+    """Serve the content script so the perception layer can be exercised in any
+    page without loading the extension. Handy for verifying the walker, the
+    redaction pass and `extract` against a real DOM."""
+    path = Path(__file__).parent.parent / "public" / "agent-content.js"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="agent-content.js not built")
+    return PlainTextResponse(path.read_text(encoding="utf-8"),
+                             media_type="application/javascript")
+
+
+# --- fixtures used by the policy demonstration -----------------------------
+@app.get("/fixtures/payment", response_class=HTMLResponse)
+async def fixture_payment():
+    return HTMLResponse(_read(FIXTURES, "payment.html"))
+
+
+@app.get("/fixtures/pii", response_class=HTMLResponse)
+async def fixture_pii():
+    return HTMLResponse(_read(FIXTURES, "pii.html"))
+
+
+@app.get("/fixtures/job-application-demo", response_class=HTMLResponse)
+async def fixture_job_application_demo():
+    """Standalone local job demo whose saved-profile button fills PII in-browser."""
+    return HTMLResponse(_read(FIXTURES, "technova_careers.html"))
+
+
+@app.get("/fixtures/prompt-injection-demo", response_class=HTMLResponse)
+async def fixture_prompt_injection_demo():
+    """Product comparison page carrying a real, observable prompt injection.
+
+    The malicious sentence is deliberately present in rendered DOM text so the
+    normal walker sees it and the real sanitizer must neutralize it.  It is a
+    local security fixture, not a canned detection result.
+    """
+    return HTMLResponse(_read(FIXTURES, "prompt_injection_shop.html"))
+
+
+@app.get("/fixtures/shop", response_class=HTMLResponse)
+async def fixture_shop():
+    return HTMLResponse(_read(FIXTURES, "shop.html"))
+
+
+@app.get("/fixtures/quakes", response_class=HTMLResponse)
+async def fixture_quakes():
+    """A list of records with no prices anywhere, beside a canvas 'map'.
+
+    Offline stand-in for a live-data site, and the regression fixture for the
+    extractor: it used to require a price on every candidate, so a page shaped
+    like this one returned nothing at all -- which also meant its data could
+    never be written anywhere, because extraction is what puts a value on the
+    record for the capability gate."""
+    return HTMLResponse(_read(FIXTURES, "quakes.html"))
+
+
+@app.get("/fixtures/upload", response_class=HTMLResponse)
+async def fixture_upload():
+    return HTMLResponse(_read(FIXTURES, "upload.html"))
+
+
+@app.get("/fixtures/govt-scholarship", response_class=HTMLResponse)
+async def fixture_govt_scholarship():
+    """A local, offline stand-in for a real Indian government portal -- an
+    Aadhaar/PAN/bank-account scholarship form, an image-rendered reference
+    number (DOM has no text node for it, only OCR can read it), and a UPI
+    payment QR code. Lets the on-device perception + redaction + policy-gate
+    pipeline be demonstrated against government-shaped data without touching,
+    or claiming to be, any real .gov.in system."""
+    return HTMLResponse(_read(FIXTURES, "govt_scholarship.html"))
+
+
+@app.get("/fixtures/attendance", include_in_schema=False)
+async def fixture_attendance_redirect():
+    # The fixture's login/OTP screen relies on the URL itself looking like a
+    # sign-in flow (the same signal a real portal's /login route would give),
+    # so the canonical entry point carries that path segment.
+    return RedirectResponse(url="/fixtures/attendance/login")
+
+
+@app.get("/fixtures/attendance/login", response_class=HTMLResponse)
+async def fixture_attendance():
+    return HTMLResponse(_read(FIXTURES, "attendance.html"))
+
+
+# --- credential vault -------------------------------------------------------
+# Values arrive from the operator's own browser on localhost and go straight to
+# the local vault file. They are never returned by any endpoint, never logged,
+# and never placed in a model prompt.
+class CredentialEntry(BaseModel):
+    name: str
+    match_url: str
+    label: str = ""
+    fields: Dict[str, str]
+
+
+@app.get("/credentials")
+async def list_credentials():
+    """Slot names and their site bindings. Never any values."""
+    from .vault import VAULT_PATH, vault
+    vault.load()
+    return {"file": str(VAULT_PATH), "slots": vault.describe()}
+
+
+@app.post("/credentials")
+async def save_credential(entry: CredentialEntry):
+    from .vault import VAULT_PATH, vault
+    name = entry.name.strip()
+    match = entry.match_url.strip().lower()
+    if not name or not match:
+        raise HTTPException(status_code=400, detail="name and match_url are required")
+    if not entry.fields:
+        raise HTTPException(status_code=400, detail="at least one field is required")
+
+    data: Dict[str, Any] = {}
+    if VAULT_PATH.exists():
+        try:
+            data = json.loads(VAULT_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            data = {}
+    data[name] = {
+        "match_url": match,
+        "label": entry.label or name,
+        "fields": {k: v for k, v in entry.fields.items() if v},
+    }
+    VAULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    VAULT_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    vault.load()
+    return {"ok": True, "slots": vault.describe()}
+
+
+@app.delete("/credentials/{name}")
+async def delete_credential(name: str):
+    from .vault import VAULT_PATH, vault
+    if not VAULT_PATH.exists():
+        raise HTTPException(status_code=404, detail="no vault file")
+    try:
+        data = json.loads(VAULT_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail="vault file is corrupt") from exc
+    if name not in data:
+        raise HTTPException(status_code=404, detail="no entry named %s" % name)
+    del data[name]
+    VAULT_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    vault.load()
+    return {"ok": True, "slots": vault.describe()}
+
+
+class BridgeCall(BaseModel):
+    op: str
+    args: Dict[str, Any] = {}
+
+
+@app.post("/debug/bridge")
+async def debug_bridge(body: BridgeCall):
+    """Run one bridge operation directly. A local diagnostic tool: it is how you
+    check the browser side without spending a model call on it."""
+    from .browser_bridge import BridgeError
+    try:
+        return {"ok": True, "result": await bridge.request(body.op, body.args)}
+    except BridgeError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# WebSocket: the browser extension
+# ---------------------------------------------------------------------------
+@app.websocket("/ws/agent")
+async def ws_agent(socket: WebSocket):
+    try:
+        runtime = runtimes.get(_websocket_token(socket))
+    except InvalidSessionToken:
+        await socket.close(code=4401, reason="authentication required")
+        return
+    # Remember that this runtime is backed by a REAL extension, so an operator
+    # UI on this machine can join it instead of spinning up an empty one.
+    runtimes.mark_agent_connected(runtime.key)
+    await socket.accept(subprotocol="drishti.v1")
+    session_id = socket.query_params.get("session_id", "unknown")
+    attached = False
+    with runtime.activate():
+        try:
+            while True:
+                raw = await socket.receive_text()
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                mtype = msg.get("type")
+
+                if not attached and mtype != "WS_CONNECTED":
+                    await bridge.attach(socket, session_id, sw_build="")
+                    attached = True
+
+                if mtype == "PING":
+                    await socket.send_json({"v": 1, "type": "PONG", "payload": {}})
+                    continue
+                if mtype == "BRIDGE_RESPONSE":
+                    payload = msg.get("payload") or {}
+                    bridge.resolve(payload.get("req_id", ""), payload)
+                    continue
+                if mtype == "WS_CONNECTED":
+                    if not attached:
+                        await bridge.attach(
+                            socket, session_id,
+                            sw_build=str((msg.get("payload") or {}).get("sw_build") or ""),
+                        )
+                        attached = True
+                    continue
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            await bridge.detach(socket)
+
+
+# ---------------------------------------------------------------------------
+# WebSocket: the cockpit
+# ---------------------------------------------------------------------------
+@app.websocket("/ws/cockpit")
+async def ws_cockpit(socket: WebSocket):
+    try:
+        # The operator UI must act inside the SAME runtime as the extension it
+        # is watching, or every task it starts reaches a bridge with no browser
+        # attached. See RuntimeManager.operator_runtime.
+        runtime = runtimes.operator_runtime(_websocket_token(socket))
+    except InvalidSessionToken:
+        await socket.close(code=4401, reason="authentication required")
+        return
+    await socket.accept(subprotocol="drishti.v1")
+    with runtime.activate():
+        queue = bus.subscribe()
+        await socket.send_json({
+            "v": 1, "type": "HELLO", "ts": "", "task_id": None, "step": 0, "seq": 0,
+            "payload": {
+                "browser_connected": bridge.connected,
+                "model_chain": llm.chain_names(),
+                "replay": [e for e in bus.replay(500) if e.get("task_id") == registry.active_task_id or not e.get("task_id")],
+                "active_task": registry.active_task_id,
+                "snapshot": (registry.get(None).snapshot()
+                             if registry.get(None) is not None else None),
+            },
+        })
+
+        async def pump() -> None:
+            while True:
+                event = await queue.get()
+                await socket.send_json(event)
+
+        pump_task = asyncio.create_task(pump())
+        try:
+            while True:
+                raw = await socket.receive_text()
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                await _handle_cockpit_message(msg, socket)
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            pump_task.cancel()
+            bus.unsubscribe(queue)
+
+
+async def _handle_cockpit_message(msg: Dict[str, Any], socket: WebSocket) -> None:
+    mtype = msg.get("type")
+    payload = msg.get("payload") or {}
+
+    if mtype == "TASK_CREATE":
+        command = (payload.get("command") or "").strip()
+        if not command:
+            await bus.emit("ERROR", {"error": "empty command"})
+            return
+        if not bridge.connected:
+            await bus.emit("ERROR", {
+                "error": "the Chrome extension is not connected. Load dist/ as an "
+                         "unpacked extension and open a normal http(s) tab.",
+            })
+            return
+        try:
+            await registry.start(command,
+                                 pre_approved=bool(payload.get("pre_approved")),
+                                 privacy_mode=str(payload.get("privacy_mode") or "balanced"))
+        except RuntimeError as exc:
+            await bus.emit("ERROR", {"error": str(exc)})
+        return
+
+    if mtype in ("CONFIRMATION_GRANTED", "CONFIRMATION_DENIED"):
+        task = registry.get(payload.get("task_id"))
+        if task is None:
+            await bus.emit("ERROR", {"error": "no task to confirm"})
+            return
+        # scope="task" is the operator answering for the whole run rather than
+        # for this one action, so they are not asked again at every step.
+        task.confirm(mtype == "CONFIRMATION_GRANTED",
+                     scope=str(payload.get("scope") or "once"))
+        return
+
+    if mtype == "TASK_CANCEL":
+        task = registry.get(payload.get("task_id"))
+        if task is not None:
+            task.cancel()
+        return
+
+    if mtype == "PING":
+        await socket.send_json({"v": 1, "type": "PONG", "payload": {}})
+        return
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server.main:app", host=config.HOST, port=config.PORT, reload=False)
