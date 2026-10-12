@@ -33,3 +33,7 @@ msg.txt
 # real pages -- they hold unredacted phone numbers and screenshots of private
 # chats, which is exactly the data this project exists to keep out of sight.
 .tmp/
+
+# test caches
+.pytest_cache/
+__pycache__/
