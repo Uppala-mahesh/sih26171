@@ -95,6 +95,10 @@ class RuntimeManager:
         profile; when more than one extension is connected, the most recently
         connected one is the one the operator is looking at.
         """
+        # Validate before selecting the live runtime. The old implementation
+        # accepted an empty token whenever any extension was connected, which
+        # made every private HTTP endpoint readable without authentication.
+        self.token_key(token)
         live = self.live_agent_runtime()
         if live is not None:
             live.last_seen = time.monotonic()

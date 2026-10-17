@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from .config import AUDIT_DIR
+from .redaction import redact_structure
 from .schemas import Envelope, now_iso
 
 # Screenshots are huge; keep them out of the audit file but leave a marker.
@@ -89,6 +90,7 @@ class EventBus:
             seq=seq,
             payload=payload or {},
         ).model_dump()
+        env = redact_structure(env)
 
         self._recent.append(env)
         if len(self._recent) > 500:

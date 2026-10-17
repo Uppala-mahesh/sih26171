@@ -27,7 +27,7 @@ from . import llm
 from .llm import ModelError
 from .reasoner import MalformedAction
 from .policy import evaluate, redact_preview
-from .redaction import redact_text
+from .redaction import redact_structure, redact_text
 from .sanitizer import sanitize_observation
 from .quoter import compose_message
 from .capability_gate import check as check_capability
@@ -187,7 +187,7 @@ class Task:
             "elapsed_s": round(time.monotonic() - self.started, 1),
             "plan": self.plan.model_dump() if self.plan else None,
             "history": self.history[-30:],
-            "extracted": self.extracted[:40],
+            "extracted": redact_structure(self.extracted[:40]),
             "summary": self.summary,
             "error": self.error,
             "pending_confirmation": self._pending_confirmation,
@@ -1494,7 +1494,7 @@ class Task:
                 "summary": self.summary,
                 "steps": self.step,
                 "elapsed_s": round(time.monotonic() - self.started, 1),
-                "data_gathered": self.extracted[:40],
+                "data_gathered": redact_structure(self.extracted[:40]),
             }, task_id=self.task_id, step=self.step)
 
         except TaskCancelled:
@@ -1515,7 +1515,7 @@ class Task:
                 "steps": self.step,
                 "elapsed_s": round(time.monotonic() - self.started, 1),
                 "history_tail": self.history[-5:],
-                "data_gathered": self.extracted[:40],
+                "data_gathered": redact_structure(self.extracted[:40]),
             }, task_id=self.task_id, step=self.step)
 
 

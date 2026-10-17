@@ -263,7 +263,7 @@ async def main() -> int:
             print("Server is not reachable on %s (%s)." % (BASE_HTTP, exc))
             print("Start it with:  npm run server")
             return 2
-    if not health["browser_connected"]:
+    if not health.get("browser_connected", False):
         print("The Chrome extension is not connected.")
         print("Load dist/ as an unpacked extension and open a normal http(s) tab.")
         return 2

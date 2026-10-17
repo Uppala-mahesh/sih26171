@@ -44,6 +44,7 @@ app = FastAPI(title="Drishti", version="2.0.0", lifespan=_lifespan)
 
 _PUBLIC_PREFIXES = ("/fixtures/",)
 _PUBLIC_PATHS = {"/", "/cockpit", "/cockpit.css", "/privacy", "/health", "/agent-content.js", "/docs", "/openapi.json"}
+_COCKPIT_COOKIE = "drishti_cockpit_token"
 
 
 def _websocket_token(socket: WebSocket) -> str:
@@ -63,9 +64,13 @@ async def bind_authenticated_runtime(request: Request, call_next):
         return await call_next(request)
     authorization = request.headers.get("authorization", "")
     token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    if not token:
+        token = request.cookies.get(_COCKPIT_COOKIE, "")
     try:
-        # Same reasoning as ws_cockpit: an operator request must run against
-        # the browser that is actually connected, or it reaches an empty bridge.
+        # Same reasoning as ws_cockpit: a valid operator credential selects the
+        # browser that is actually connected, or it reaches an empty bridge.
+        # The credential is still mandatory; falling back to the live runtime
+        # without validating one exposed task state to any local HTTP caller.
         runtime = runtimes.operator_runtime(token)
     except InvalidSessionToken:
         return JSONResponse({"detail": "authentication required"}, status_code=401)
@@ -113,7 +118,16 @@ async def cockpit():
         return HTMLResponse("<h1>cockpit unavailable</h1>", status_code=500)
     page = _read(TEMPLATES, "cockpit.html")
     page = page.replace("__DRISHTI_COCKPIT_TOKEN__", token)
-    return HTMLResponse(page)
+    response = HTMLResponse(page)
+    response.set_cookie(
+        _COCKPIT_COOKIE,
+        token,
+        httponly=True,
+        samesite="strict",
+        secure=False,
+        path="/",
+    )
+    return response
 
 
 @app.get("/cockpit.css")
@@ -128,8 +142,16 @@ async def privacy_policy():
 
 @app.get("/health")
 async def health():
+    # /health is public, so it does not run inside the authenticated runtime
+    # middleware. Report the runtime owned by the most recently connected
+    # extension instead of the process-global fallback runtime; otherwise the
+    # cockpit and smoke runner can see a healthy server while missing the live
+    # browser session and active task.
+    live = runtimes.live_agent_runtime()
     return {
         "ok": True,
+        "browser_connected": bool(live and live.bridge.connected),
+        "active_task": live.registry.active_task_id if live else None,
         "model_chain": llm.chain_names(),
         "sessions": runtimes.session_count,
         "guards": {

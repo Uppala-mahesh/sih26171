@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from server.browser_bridge import bridge
 from server.events import bus
-from server.loop import registry
+from server.loop import Task, registry
 from server.runtime import InvalidSessionToken, RuntimeManager
 from server.main import app
 from server.runtime import runtimes
@@ -36,6 +36,31 @@ def test_tokens_create_distinct_runtime_state():
 def test_private_http_endpoints_require_a_bearer_token():
     response = TestClient(app).get("/tasks")
     assert response.status_code == 401
+
+
+def test_private_http_endpoints_reject_empty_token_even_when_an_agent_is_live():
+    manager = RuntimeManager()
+    manager.get(TOKEN_A)
+    manager.mark_agent_connected(manager.token_key(TOKEN_A))
+    original = runtimes._agent_keys.copy()
+    runtimes._agent_keys.clear()
+    try:
+        runtimes._agent_keys[manager.token_key(TOKEN_A)] = 1.0
+        response = TestClient(app).get("/tasks")
+        assert response.status_code == 401
+    finally:
+        runtimes._agent_keys.clear()
+        runtimes._agent_keys.update(original)
+
+
+def test_cockpit_issues_cookie_for_private_http_requests():
+    response = TestClient(app).get("/cockpit")
+    assert response.status_code == 200
+    cookie = response.cookies.get("drishti_cockpit_token")
+    assert cookie and len(cookie) >= 43
+    private = TestClient(app)
+    private.cookies.set("drishti_cockpit_token", cookie)
+    assert private.get("/tasks").status_code == 200
 
 
 def test_http_task_lists_are_scoped_to_the_authenticated_installation():
@@ -87,4 +112,25 @@ def test_events_do_not_cross_session_subscribers():
       assert (await asyncio.wait_for(first_queue.get(), 0.2))["type"] == "ONLY_FIRST"
       with pytest.raises(asyncio.TimeoutError):
           await asyncio.wait_for(second_queue.get(), 0.02)
+    asyncio.run(run())
+
+
+def test_extracted_values_are_redacted_before_events_and_snapshots():
+    sentinel = "private-sentinel@example.test"
+    task = Task("summarize the page")
+    task.extracted = [{"label": "email", "value": sentinel}]
+
+    snapshot = task.snapshot()
+    assert sentinel not in str(snapshot)
+    assert "[REDACTED:EMAIL]" in snapshot["extracted"][0]["value"]
+
+    async def run():
+      manager = RuntimeManager()
+      queue = manager.get(TOKEN_A).bus.subscribe()
+      with manager.get(TOKEN_A).activate():
+          event = await bus.emit("DATA_GATHERED", {"items": [{"value": sentinel}]})
+      assert sentinel not in str(event)
+      assert "[REDACTED:EMAIL]" in event["payload"]["items"][0]["value"]
+      assert sentinel not in str(await asyncio.wait_for(queue.get(), 0.2))
+
     asyncio.run(run())

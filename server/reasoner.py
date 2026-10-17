@@ -18,6 +18,7 @@ from pydantic import ValidationError
 
 from . import config, llm
 from .events import bus
+from .redaction import redact_structure
 from .knowledge import GENERIC_HINTS, hints_for
 from .vault import vault
 from .schemas import ActionProposal, Observation, Plan
@@ -498,7 +499,9 @@ async def propose(
             # going back to look for them again.
             payload["what_you_have_found_so_far"] = notes[-8:]
         if extracted:
-            payload["data_gathered"] = extracted[:25 if tier == 0 else 8]
+            payload["data_gathered"] = redact_structure(
+                extracted[:25 if tier == 0 else 8]
+            )
         hints = hints_for(obs.url)
         if tier == 0 or hints is not GENERIC_HINTS:
             payload["site_hints"] = hints

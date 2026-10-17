@@ -17,7 +17,7 @@ the two cannot quietly drift apart.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("CARD", re.compile(r"\b(?:\d[ -]*?){13,19}\b")),
@@ -49,3 +49,16 @@ def redact_text(text: str) -> Tuple[str, Dict[str, int]]:
 
         out = pattern.sub(swap, out)
     return out, counts
+
+
+def redact_structure(value: Any) -> Any:
+    """Redact sensitive text recursively without changing the input object."""
+    if isinstance(value, str):
+        return redact_text(value)[0]
+    if isinstance(value, dict):
+        return {key: redact_structure(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_structure(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_structure(item) for item in value)
+    return value
