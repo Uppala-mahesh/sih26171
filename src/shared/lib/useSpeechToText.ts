@@ -42,12 +42,31 @@ export type UseSpeechToTextReturn = {
 
 // ---- Browser type shim ---------------------------------------------------
 // Chrome ships SpeechRecognition under the webkit prefix in older builds.
-// We cast to `any` internally to avoid fighting the circular-type the TS
-// compiler generates when you try to infer the constructor return type from
-// the same constructor type.
+type SpeechRecognitionResultEvent = {
+  resultIndex: number
+  results: ArrayLike<{
+    isFinal: boolean
+    0: { transcript: string }
+  }>
+}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SpeechRecognitionLike = any
+type SpeechRecognitionErrorEvent = {
+  error: string
+}
+
+type SpeechRecognitionLike = {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  onstart: (() => void) | null
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
 
 declare global {
   interface Window {
@@ -87,8 +106,7 @@ export function useSpeechToText({
     const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition
     if (!Ctor) return null
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r = new Ctor() as any
+    const r = new Ctor()
 
     /**
      * Language selection strategy:
@@ -120,7 +138,7 @@ export function useSpeechToText({
       setInterimText('')
     }
 
-    r.onresult = (event: any) => {
+    r.onresult = (event: SpeechRecognitionResultEvent) => {
       let interim = ''
       let final = ''
 
@@ -146,7 +164,7 @@ export function useSpeechToText({
       }
     }
 
-    r.onerror = (event: any) => {
+    r.onerror = (event: SpeechRecognitionErrorEvent) => {
       isListeningRef.current = false
       setStatus('error')
       setInterimText('')

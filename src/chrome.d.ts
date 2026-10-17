@@ -6,7 +6,7 @@
 declare namespace chrome {
   namespace runtime {
     const lastError: { message?: string } | undefined
-    function sendMessage(message: unknown, callback?: (response?: any) => void): void
+    function sendMessage(message: unknown, callback?: (response?: Record<string, unknown>) => void): void
     function getManifest(): { version: string; [key: string]: unknown }
     function getURL(path: string): string
   }
@@ -28,7 +28,7 @@ declare namespace chrome {
   }
   namespace storage {
     const local: {
-      get(keys: string | string[] | null, callback: (items: Record<string, any>) => void): void
+      get(keys: string | string[] | null, callback: (items: Record<string, unknown>) => void): void
       set(items: Record<string, unknown>, callback?: () => void): void
     }
   }

@@ -24,7 +24,7 @@ type JsQrFn = (data: Uint8ClampedArray, width: number, height: number) => JsQrRe
 function loadJsQR(): JsQrFn {
   const src = fs.readFileSync(path.join(ROOT, 'public/jsqr/jsQR.js'), 'utf8')
   const mod = { exports: {} as unknown }
-  // eslint-disable-next-line no-new-func
+
   new Function('module', 'exports', src)(mod, mod.exports)
   return mod.exports as JsQrFn
 }
@@ -121,7 +121,7 @@ describe('real QR round-trip: the bundled jsQR.js actually decodes a real code',
     const { pixels, size } = rasterizeQr(payload)
     const ctx = { getImageData: () => ({ data: pixels }) }
 
-    // eslint-disable-next-line no-new-func
+
     const detectQrBoxes = new Function('self', `${body}; return detectQrBoxes;`)({ jsQR })
     const boxes = detectQrBoxes(ctx, size, size)
 

@@ -76,7 +76,21 @@ type Envelope = {
   task_id: string | null
   step: number
   seq: number
+  // Event payloads are provider-specific; individual handlers validate the
+  // fields they consume before using them.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload: Record<string, any>
+}
+
+type HelloPayload = {
+  browser_connected?: boolean
+  snapshot?: {
+    last_screenshot?: string
+    state?: string
+    task_id?: string | null
+    command?: string
+  }
+  replay?: Envelope[]
 }
 
 function isDetachedNow(): boolean {
@@ -96,10 +110,11 @@ const NARRATED = new Set([
 ])
 
 function describe(e: Envelope): string | null {
-  const p = e.payload || {}
+  const p = e.payload
   switch (e.type) {
     case 'PLAN_GENERATED': {
-      const steps = (p.steps || []).map((s: any, i: number) => `${i + 1}. ${s.goal}`).join('\n')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const steps = (p.steps || []).map((step: any, i: number) => `${i + 1}. ${step.goal}`).join('\n')
       return `${p.replanned ? 'Rewrote the plan now that I know the task' : 'Plan'}: ${p.objective}\n${steps}`
     }
     case 'ACTION_PROPOSED':
@@ -233,14 +248,18 @@ export function useAgentRunner() {
     let alive = true
     const poll = () => {
       try {
-        chrome.runtime?.sendMessage({ type: 'AGENT_STATUS' }, (reply: any) => {
+        chrome.runtime?.sendMessage({ type: 'AGENT_STATUS' }, (reply) => {
           if (!alive || chrome.runtime?.lastError || !reply) return
-          setTargetPage(reply.target_url || '')
-          if (reply.auth_token) setAuthToken(reply.auth_token)
+          const targetUrl = typeof reply.target_url === 'string' ? reply.target_url : ''
+          const authToken = typeof reply.auth_token === 'string' ? reply.auth_token : ''
+          setTargetPage(targetUrl)
+          if (authToken) setAuthToken(authToken)
         })
         chrome.storage?.local?.get('local_model_status', (data) => {
           if (!alive || chrome.runtime?.lastError) return
-          setLocalModelStatus(data.local_model_status || null)
+          setLocalModelStatus(
+            typeof data.local_model_status === 'string' ? data.local_model_status : null,
+          )
         })
       } catch {
         /* not running as an extension */
@@ -366,7 +385,7 @@ export function useAgentRunner() {
       case 'MASKING_APPLIED': {
         const byType = (p.pii_redactions || {}) as Record<string, number>
         const occ = Object.values(p.pii_occurrences || {})
-          .reduce((a: number, b: any) => a + Number(b || 0), 0)
+          .reduce((a: number, b: unknown) => a + Number(b || 0), 0)
         setMasking({
           byType,
           occurrences: occ,
@@ -389,7 +408,7 @@ export function useAgentRunner() {
         setMasking((current) => ({
           byType: { ...(current?.byType || {}), ...(p.redacted_after_reading || {}) },
           piiTotal: Object.values(p.redacted_after_reading || {})
-            .reduce((a: number, b: any) => a + Number(b || 0), 0),
+            .reduce((a: number, b: unknown) => a + Number(b || 0), 0),
           maskedRegions: current?.maskedRegions || 0,
           occurrences: current?.occurrences || 0,
           regions: current?.regions || [],
@@ -471,9 +490,9 @@ export function useAgentRunner() {
         if (!closed) retry = setTimeout(connect, RECONNECT_MS)
       }
       ws.onmessage = (event) => {
-        let msg: any
+        let msg: { type?: string; payload?: HelloPayload }
         try {
-          msg = JSON.parse(event.data)
+          msg = JSON.parse(event.data) as { type?: string; payload?: HelloPayload }
         } catch {
           return
         }
@@ -488,7 +507,7 @@ export function useAgentRunner() {
             if (snap.last_screenshot) {
               setMaskedScreenshot(`data:image/jpeg;base64,${snap.last_screenshot}`)
             }
-            const live = !['COMPLETED', 'FAILED', 'CANCELLED'].includes(snap.state)
+            const live = !['COMPLETED', 'FAILED', 'CANCELLED'].includes(snap.state ?? '')
             setIsRunning(live)
             if (snap.task_id) taskIdRef.current = snap.task_id
             if (snap.command) push('user', snap.command)
@@ -506,7 +525,7 @@ export function useAgentRunner() {
           return
         }
         if (msg.type === 'PONG') return
-        handle(msg)
+        handle(msg as Envelope)
       }
     }
 
@@ -524,7 +543,7 @@ export function useAgentRunner() {
       if (retry) clearTimeout(retry)
       socketRef.current?.close()
     }
-  }, [authToken, handle])
+  }, [authToken, handle, push])
 
   const send = useCallback((type: string, payload: Record<string, unknown>) => {
     const ws = socketRef.current

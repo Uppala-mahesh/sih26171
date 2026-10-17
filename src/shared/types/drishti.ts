@@ -4,7 +4,7 @@ export type ReasonStatus = 'idle' | 'thinking' | 'ready' | 'error'
 
 export type ReasoningEngine = 'auto' | 'onnx' | 'server'
 
-export type SummaryLanguage = 'en' | 'hi'
+export type SummaryLanguage = 'en' | 'hi' | 'hinglish'
 
 export type UserSettings = {
   reasoningEngine: ReasoningEngine

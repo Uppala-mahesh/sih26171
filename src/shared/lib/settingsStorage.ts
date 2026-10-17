@@ -20,6 +20,35 @@ type ChromeWithStorage = {
 
 declare const chrome: ChromeWithStorage | undefined
 
+function isReasoningEngine(value: unknown): value is UserSettings['reasoningEngine'] {
+  return value === 'auto' || value === 'onnx' || value === 'server'
+}
+
+function isPrivacyMode(value: unknown): value is UserSettings['privacyMode'] {
+  return value === 'strict' || value === 'balanced' || value === 'fast'
+}
+
+function isSummaryLanguage(value: unknown): value is UserSettings['summaryLanguage'] {
+  return value === 'en' || value === 'hi' || value === 'hinglish'
+}
+
+function normalizeSettings(items: Record<string, unknown>): UserSettings {
+  return {
+    reasoningEngine: isReasoningEngine(items.reasoningEngine)
+      ? items.reasoningEngine
+      : DEFAULT_SETTINGS.reasoningEngine,
+    serverUrl: typeof items.serverUrl === 'string' && items.serverUrl.trim()
+      ? items.serverUrl.trim()
+      : DEFAULT_SETTINGS.serverUrl,
+    privacyMode: isPrivacyMode(items.privacyMode)
+      ? items.privacyMode
+      : DEFAULT_SETTINGS.privacyMode,
+    summaryLanguage: isSummaryLanguage(items.summaryLanguage)
+      ? items.summaryLanguage
+      : DEFAULT_SETTINGS.summaryLanguage,
+  }
+}
+
 function hasChromeStorageSync(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome?.storage?.sync)
 }
@@ -30,12 +59,7 @@ export async function loadSettings(): Promise<UserSettings> {
       try {
         chrome!.storage!.sync!.get(DEFAULT_SETTINGS, (items) => {
           if (items && typeof items === 'object') {
-            resolve({
-              reasoningEngine: (items.reasoningEngine as UserSettings['reasoningEngine']) || DEFAULT_SETTINGS.reasoningEngine,
-              serverUrl: (items.serverUrl as string) || DEFAULT_SETTINGS.serverUrl,
-              privacyMode: (items.privacyMode as UserSettings['privacyMode']) || DEFAULT_SETTINGS.privacyMode,
-              summaryLanguage: (items.summaryLanguage as UserSettings['summaryLanguage']) || DEFAULT_SETTINGS.summaryLanguage,
-            })
+            resolve(normalizeSettings(items))
           } else {
             resolve(DEFAULT_SETTINGS)
           }
@@ -80,7 +104,10 @@ function loadFromLocalStorage(): UserSettings {
     if (typeof localStorage !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) }
+        const parsed: unknown = JSON.parse(stored)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return normalizeSettings(parsed as Record<string, unknown>)
+        }
       }
     }
   } catch (err) {
@@ -106,5 +133,7 @@ export function _resetSettingsForTesting(): void {
     if (typeof localStorage !== 'undefined') {
       localStorage.clear()
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[Drishti] Error resetting settings:', err)
+  }
 }

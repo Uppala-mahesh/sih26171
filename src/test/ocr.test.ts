@@ -114,7 +114,7 @@ describe('VERIFY: re-OCR the redacted screenshot and fail closed on any leak', (
       else if (bg[i] === '}') { depth--; if (started && depth === 0) { end = i + 1; break } }
     }
     const body = bg.slice(start, end)
-    // eslint-disable-next-line no-new-func
+
     return new Function(`${body}; return verifyRedaction;`)() as ReturnType<typeof loadVerify>
   }
 

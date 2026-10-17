@@ -93,7 +93,7 @@ describe('checksum validators reduce false-positive PII classification', () => {
       else if (SOURCE[i] === '}') { depth--; if (started && depth === 0) { end = i + 1; break } }
     }
     const body = SOURCE.slice(start, end)
-    // eslint-disable-next-line no-new-func
+
     return new Function(`${body}; return { luhnValid, verhoeffValid };`)() as {
       luhnValid: (raw: string) => boolean
       verhoeffValid: (raw: string) => boolean
@@ -139,7 +139,7 @@ describe('numbered surrogate tokens (REDACT+TOKENIZE)', () => {
       else if (SOURCE[i] === '}') { depth--; if (started && depth === 0) { end = i + 1; break } }
     }
     const body = SOURCE.slice(start, end)
-    // eslint-disable-next-line no-new-func
+
     return new Function(`${body}; return { redact };`)() as { redact: (t: string) => string }
   }
 

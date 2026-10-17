@@ -73,16 +73,14 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
   async function testServerConnection() {
     setTestingServer(true)
     setServerStatus('idle')
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      timeoutId = setTimeout(() => controller.abort(), 3000)
       const res = await fetch(settings.serverUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ping: true, task: 'health-check' }),
+        method: 'GET',
         signal: controller.signal,
       })
-      clearTimeout(timeoutId)
       if (res.ok) {
         setServerStatus('online')
         message.success('Server is reachable!')
@@ -94,6 +92,7 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
       setServerStatus('offline')
       message.error('Server is unreachable. Make sure demo-server is running.')
     } finally {
+      if (timeoutId) clearTimeout(timeoutId)
       setTestingServer(false)
     }
   }
