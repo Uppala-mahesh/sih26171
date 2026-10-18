@@ -37,3 +37,7 @@ msg.txt
 # test caches
 .pytest_cache/
 __pycache__/
+
+# vendored transformers bundle — carries a live API key in dev; keep it out of
+# the repo (removed from history on `v3`/`clean-v3`), file stays local only.
+public/transformers/transformers.web.min.js
