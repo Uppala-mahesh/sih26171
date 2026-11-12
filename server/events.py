@@ -162,11 +162,15 @@ def _append_audit(task_id: str, env: Dict[str, Any]) -> None:
         stripped["audit_prev_hash"] = prev
         stripped["audit_hash"] = digest
         _last_hash[task_id] = digest
-    try:
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(stripped, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+        # The write must happen under the same lock as the hash computation:
+        # appends run concurrently (one thread per event), so an unlocked write
+        # can reorder lines on disk and/or tear a long line mid-write, breaking
+        # verify_audit_chain() for every task (observed in the field).
+        try:
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(stripped, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
 
 def audit_path(task_id: str) -> Path:

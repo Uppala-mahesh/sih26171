@@ -9,6 +9,30 @@ import { openMicrophonePermissionTab, useSpeechToText } from '../../shared/lib/u
 import { SettingsDrawer } from '../settings/SettingsDrawer'
 import './ChatShell.css'
 
+/* Renders operator-facing text with every [REDACTED:*] token as a censor
+   bar: true black ink with a tiny mono label. What the model never saw, the
+   operator sees redacted too -- the report stream and its own summary agree. */
+const REDACTED_TOKEN = /\[REDACTED:[A-Za-z0-9_]+\]/g
+
+export function DocketText({ value }: { value: string | undefined | null }) {
+  if (!value) return null
+  return (
+    <>
+      {value.split(REDACTED_TOKEN).map((part, i) => {
+        const bare = part.match(/^\[REDACTED:([A-Za-z0-9_]+)\]$/)
+        if (bare) {
+          return (
+            <span className="censor-bar" data-kind={bare[1]} key={i}>
+              {part}
+            </span>
+          )
+        }
+        return part
+      })}
+    </>
+  )
+}
+
 type ChatShellProps = {
   extensionReady: boolean
   isRunning: boolean
@@ -230,11 +254,12 @@ export function ChatShell({
       {activePanel === 'chat' && messages.length === 0 && !isRunning && (
         <section className="hero-copy" aria-label="Greeting">
           <Typography.Title level={1}>
-            <span>Hello, Buddy.</span>
-            What should we handle on this page?
+            <span>Case file, opened.</span>
+            What should Drishti look at?
           </Typography.Title>
           <Typography.Paragraph>
-            Ask naturally. Sensitive fields are masked locally before any reasoning starts.
+            Command the agent in plain words. Every line it reads is screened
+            on this machine before it reaches any model.
           </Typography.Paragraph>
 
           {/*
@@ -251,7 +276,7 @@ export function ChatShell({
               className="quick-action-pill"
               onClick={() => onTaskChange('Scroll through the whole page and give a complete summary')}
             >
-              <span className="qa-icon" aria-hidden="true">📜</span>
+              <span className="qa-icon" aria-hidden="true">§</span>
               <span className="qa-text">Full Page Scroll &amp; Summarize</span>
             </button>
             <button
@@ -259,7 +284,7 @@ export function ChatShell({
               className="quick-action-pill"
               onClick={() => onTaskChange('Scan and redact all sensitive PII on this page')}
             >
-              <span className="qa-icon" aria-hidden="true">🛡️</span>
+              <span className="qa-icon" aria-hidden="true">⊘</span>
               <span className="qa-text">Scan &amp; Redact Sensitive PII</span>
             </button>
           </div>
@@ -278,7 +303,9 @@ export function ChatShell({
               {message.role === 'assistant' && (
                 <span className="message-avatar" aria-hidden="true">N</span>
               )}
-              <article className={`message ${message.role}`}>{message.text}</article>
+              <article className={`message ${message.role}`}>
+                <DocketText value={message.text} />
+              </article>
             </div>
           ))}
           {isRunning && (
@@ -296,13 +323,13 @@ export function ChatShell({
                   <span className="approval-live">cannot be pre-approved</span>
                 )}
               </div>
-              <div className="approval-action">{pending.preview}</div>
+              <div className="approval-action"><DocketText value={pending.preview} /></div>
               {pending.textPreview && (
-                <div className="approval-text">{pending.textPreview}</div>
+                <div className="approval-text"><DocketText value={pending.textPreview} /></div>
               )}
               <dl className="approval-meta">
                 <dt>page</dt><dd>{pending.url}</dd>
-                {pending.reason ? (<><dt>why</dt><dd>{pending.reason}</dd></>) : null}
+                {pending.reason ? (<><dt>why</dt><dd><DocketText value={pending.reason} /></dd></>) : null}
                 <dt>rules</dt><dd>{pending.rulesFired.join(', ') || '—'}</dd>
               </dl>
               {pending.screenshot && (

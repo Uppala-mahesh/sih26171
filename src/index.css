@@ -1,3 +1,10 @@
+/* Drishti is an operator's dossier: paper, ink, one stamp color.
+   Fonts are bundled locally (popup CSP forbids remote fetch). */
+
+@import '@fontsource-variable/anek-devanagari';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
 html,
 body,
 #root {
@@ -6,43 +13,68 @@ body,
 
 :root {
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  color: #182026;
-  background: transparent;
+    'Anek Devanagari Variable', ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* ---- Drishti premium palette --------------------------------------
-     Shared across the popup shell and any portaled surfaces (antd drawers,
-     dropdowns) which mount outside .chat-popup and so need the tokens on
-     :root rather than scoped to a class. */
-  --ns-bg-0: #05060b;
-  --ns-bg-1: #0a0c15;
-  --ns-bg-2: #10131e;
-  --ns-surface: rgba(255, 255, 255, 0.045);
-  --ns-surface-strong: rgba(255, 255, 255, 0.08);
-  --ns-border: rgba(148, 163, 184, 0.16);
-  --ns-border-strong: rgba(178, 190, 255, 0.32);
-  --ns-text: #f4f3fb;
-  --ns-text-dim: #9aa2b8;
-  --ns-text-faint: #6d7590;
+  color: var(--ink);
+  background: transparent;
 
-  --ns-violet: #8b7bff;
-  --ns-violet-strong: #7c5cff;
-  --ns-cyan: #22d3ee;
-  --ns-emerald: #34d399;
-  --ns-amber: #f0c674;
-  --ns-rose: #f87171;
+  /* ---- the dossier palette -----------------------------------------
+     Paper carries the chrome; ink carries every line; one vermilion
+     stamp marks anything that needs a human. No gradients, no glow. */
+  --paper: #e7dfcc;
+  --paper-deep: #ddd3bb;
+  --sheet: #f6f1e4;
+  --sheet-deep: #efe8d7;
+  --ink: #20242c;
+  --ink-dim: #6b6f79;
+  --ink-faint: #9a968b;
+  --line: rgba(32, 36, 44, 0.85);
+  --line-soft: rgba(32, 36, 44, 0.34);
+  --line-faint: rgba(32, 36, 44, 0.16);
 
-  --ns-gradient-brand: linear-gradient(135deg, #8b7bff 0%, #6d8dff 45%, #22d3ee 100%);
-  --ns-gradient-user: linear-gradient(135deg, #6d5bff 0%, #4f7cff 100%);
-  --ns-gradient-cta: linear-gradient(135deg, #a78bfa 0%, #7c5cff 55%, #22d3ee 130%);
+  --stamp: #b3402a;
+  --ok: #2e6b4f;
+  --warn: #8a6a1f;
+  --censor: #17181c;
 
-  --ns-shadow-soft: 0 12px 32px rgba(3, 4, 10, 0.45);
-  --ns-shadow-glow: 0 0 0 1px rgba(139, 123, 255, 0.14), 0 18px 40px rgba(76, 58, 200, 0.22);
+  --font-ui: 'Anek Devanagari Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --shadow-print: 2px 3px 0 rgba(32, 36, 44, 0.22);
+  --shadow-docket: 3px 4px 0 rgba(32, 36, 44, 0.3);
+
+  /* Legacy --ns-* tokens: antd portaled surfaces (drawer, dropdown) and the
+     settings panel read these. They now resolve into the dossier palette so
+     those surfaces land on the same paper without touching their rules. */
+  --ns-bg-0: #e7dfcc;
+  --ns-bg-1: #efe8d7;
+  --ns-bg-2: #f6f1e4;
+  --ns-surface: rgba(32, 36, 44, 0.04);
+  --ns-surface-strong: rgba(32, 36, 44, 0.08);
+  --ns-border: rgba(32, 36, 44, 0.28);
+  --ns-border-strong: rgba(32, 36, 44, 0.5);
+  --ns-text: #20242c;
+  --ns-text-dim: #6b6f79;
+  --ns-text-faint: #9a968b;
+
+  --ns-violet: #20242c;
+  --ns-violet-strong: #20242c;
+  --ns-cyan: #6b6f79;
+  --ns-emerald: #2e6b4f;
+  --ns-amber: #8a6a1f;
+  --ns-rose: #b3402a;
+
+  --ns-gradient-brand: linear-gradient(0deg, #20242c, #20242c);
+  --ns-gradient-user: linear-gradient(0deg, #20242c, #20242c);
+  --ns-gradient-cta: linear-gradient(0deg, #20242c, #20242c);
+
+  --ns-shadow-soft: 2px 3px 0 rgba(32, 36, 44, 0.18);
+  --ns-shadow-glow: 2px 3px 0 rgba(32, 36, 44, 0.22);
 }
 
 body {
@@ -55,51 +87,37 @@ body {
 }
 
 ::selection {
-  background: rgba(139, 123, 255, 0.38);
-  color: #ffffff;
+  background: var(--ink);
+  color: var(--sheet);
 }
 
-/* ---- One scrollbar, everywhere ------------------------------------------
-   The chat thread had a brand-coloured scrollbar and nothing else did, so
-   every other scrollable surface -- the details pane, the history list, the
-   settings drawer, the composer once it grows -- fell back to the platform's
-   grey default sitting on a near-black panel. Defined on :root rather than
-   scoped to .chat-popup so antd's portaled drawers and dropdowns, which mount
-   outside the shell, are covered by the same rule.
-
-   `scrollbar-width`/`scrollbar-color` are the standard properties (Firefox and
-   newer Chromium); the ::-webkit-* block is what Chrome actually honours today
-   and carries the gradient, which the standard properties cannot express. */
+/* ---- One scrollbar, everywhere ------------------------------------- */
 * {
-  scrollbar-color: rgba(139, 123, 255, 0.45) rgba(255, 255, 255, 0.05);
+  scrollbar-color: rgba(32, 36, 44, 0.5) rgba(32, 36, 44, 0.08);
   scrollbar-width: thin;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-track {
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  /* The inset border is what makes the thumb read as a floating pill rather
-     than a bar filling the gutter. It has to match the surface behind it. */
-  border: 2px solid var(--ns-bg-1);
-  border-radius: 999px;
-  background: linear-gradient(180deg, #8b7bff, #4f7cff);
-  transition: background 0.2s ease;
+  border: 2px solid var(--sheet);
+  border-radius: 0;
+  background: var(--line-soft);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #a190ff, #6b93ff);
+  background: var(--ink-dim);
 }
 
 ::-webkit-scrollbar-thumb:active {
-  background: linear-gradient(180deg, #b9aaff, #85a6ff);
+  background: var(--ink);
 }
 
 ::-webkit-scrollbar-corner {

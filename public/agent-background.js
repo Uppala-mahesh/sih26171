@@ -360,8 +360,20 @@ async function ensureContentScript(tabId) {
 }
 
 async function callContent(tabId, message) {
-  await ensureContentScript(tabId)
-  return chrome.tabs.sendMessage(tabId, message)
+  const TRANSIENT_MSG_ERROR = /message channel closed|Receiving end|no response/i
+  try {
+    await ensureContentScript(tabId)
+    return await chrome.tabs.sendMessage(tabId, message)
+  } catch (e) {
+    const text = String((e && e.message) || e)
+    if (!TRANSIENT_MSG_ERROR.test(text)) throw e
+    // The channel died mid-message (tab navigating / content script just
+    // injecting / old listener answered too late). Re-ensure the script,
+    // let the page settle, and answer honestly if it still refuses.
+    await ensureContentScript(tabId)
+    await new Promise((r) => setTimeout(r, 400))
+    return chrome.tabs.sendMessage(tabId, message)
+  }
 }
 
 function waitForTabComplete(tabId, timeoutMs) {
@@ -821,11 +833,23 @@ async function handleBridgeRequest(payload) {
       try {
         const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
         if (active && active.id !== tabId) {
-          userTabNote = isInjectable(active.url)
-            ? 'the user is looking at a different tab (' + (active.url || '').slice(0, 80) + ')'
-            : 'the tab the user is looking at is ' + String(active.url || '').split('/')[0]
+          // The agent's own surfaces (action popup, detached console, cockpit)
+          // are where commands are TYPED, not pages to work on. A task issued
+          // from there must not read as a wrong-page warning -- the working
+          // tab below is the page the user means. Anything else that is not
+          // injectable (chrome://settings, the store) still deserves the
+          // honest "I cannot read the page in front of you" note.
+          const ownPrefix = chrome.runtime.getURL('')
+          const activeIsOwnSurface = (active.url || '').startsWith(ownPrefix)
+          if (activeIsOwnSurface) {
+            userTabNote = null
+          } else if (isInjectable(active.url)) {
+            userTabNote = 'the user is looking at a different tab (' + (active.url || '').slice(0, 80) + ')'
+          } else {
+            userTabNote = 'the tab the user is looking at is ' + String(active.url || '').split('/')[0]
               + '//... which extensions cannot read at all, so this observation is of a '
               + 'DIFFERENT page. If the task refers to "this page", say you cannot read it.'
+          }
         }
       } catch (e) { /* ignore */ }
       const r = await callContent(tabId, {

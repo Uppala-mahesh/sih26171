@@ -263,7 +263,9 @@ class Gemini(Provider):
             "temperature": 0.1,
             "maxOutputTokens": 1024,
         }
-        if "lite" not in model:
+        # Gemini 3 non-lite models accept thinkingLevel; 2.5 models reject it
+        # with HTTP 400 ("Thinking level is not supported for this model").
+        if model.startswith("gemini-3") and "lite" not in model:
             cfg["thinkingConfig"] = {"thinkingLevel": "LOW"}
         return cfg
 
@@ -421,6 +423,45 @@ def chain_names() -> List[str]:
 # ---------------------------------------------------------------------------
 # JSON extraction: models occasionally wrap JSON in prose or code fences.
 # ---------------------------------------------------------------------------
+def _repair_truncated(text: str):
+    """Output caps cut long JSON mid-string; a truncated finish still names
+    its action and summary, so close the dangling string and brackets and let
+    the parse live. Returns None when the damage is unparseable."""
+    stack = []
+    in_string = False
+    escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+    if in_string:
+        if text.endswith("\\"):
+            text = text[:-1]
+        text += '"'
+    text = text.rstrip()
+    if text.endswith(":") or text.endswith(","):
+        text = text[:-1].rstrip()
+    for ch in reversed(stack):
+        text += "}" if ch == "{" else "]"
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def parse_json(text: str) -> Dict[str, Any]:
     text = (text or "").strip()
     if text.startswith("```"):
@@ -448,6 +489,16 @@ def parse_json(text: str) -> Dict[str, Any]:
                         return json.loads(text[start:i + 1])
                     except json.JSONDecodeError:
                         break
+        # The scan never found the closing brace: most likely the output cap
+        # cut the response mid-string. A truncated finish still says which
+        # action it meant -- repair and use it rather than killing the turn.
+        repaired = _repair_truncated(text[start:])
+        if repaired is not None:
+            return repaired
+    else:
+        repaired = _repair_truncated(text)
+        if repaired is not None:
+            return repaired
     raise ModelError("model did not return JSON: " + text[:200])
 
 

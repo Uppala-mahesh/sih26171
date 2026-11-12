@@ -1102,6 +1102,16 @@ class Task:
             return ("finish was proposed at step %d with no action performed and no "
                     "answer given; the browser is on %s" % (self.step, obs.url))
         if support < 0.5:
+            # Redaction evidence. On a scan/redact task, doing nothing can be
+            # the correct outcome: the page arrives from the extension pre-
+            # masked by the on-device pass, and the placeholders are visible
+            # in the text the agent observes. If the summary claims the page
+            # is already redacted/masked AND the observed page actually shows
+            # [REDACTED:*] placeholders, the claim is grounded -- accept it.
+            claims_masking = re.search(r"redact|mask|placeholder", summary, re.I)
+            shows_placeholders = "[redacted:" in (obs.page_text or "").lower()
+            if claims_masking and shows_placeholders:
+                return None
             return ("finish was proposed with no action performed, and only %.0f%% of "
                     "the specifics in the summary appear anywhere on the observed "
                     "page. Read the page properly before answering."
@@ -1187,9 +1197,34 @@ class Task:
             "action": "open_tab", "preview": "open " + url,
             "note": "no existing tab could be reused, so the agent opened one",
         }, task_id=self.task_id, step=0)
-        res = await bridge.request("open_tab", {"url": url}, task_id=self.task_id)
+        res = await self._open_tab_steady(url)
         await bus.emit("ACTION_EXECUTED", {"action": "open_tab", "result": res},
                        task_id=self.task_id, step=0)
+
+    async def _open_tab_steady(self, url: str) -> Dict[str, Any]:
+        """Chrome answers 'No current window' when a task starts with no
+        windows open at all -- the operator closed the browser while the
+        extension socket stayed connected. That state lasts the few seconds
+        Chrome needs to come back, so an instant hard fail is premature:
+        wait briefly for a window to appear, then report honestly."""
+        last: Optional[BridgeError] = None
+        for attempt in range(3):
+            try:
+                return await bridge.request("open_tab", {"url": url},
+                                            task_id=self.task_id)
+            except BridgeError as exc:
+                if not re.search(r"no current window", str(exc), re.I):
+                    raise
+                last = exc
+                await bus.emit("STATE_CHANGED", {
+                    "state": "WAITING_FOR_BROWSER",
+                    "detail": "no browser window is open; waiting for one "
+                              "to appear (attempt %d/3)" % (attempt + 1),
+                }, task_id=self.task_id, step=0)
+                await asyncio.sleep(2)
+        raise BridgeError(
+            "no browser window opened after 3 waits (%s): "
+            "open Chrome and start the task again" % last)
 
     async def _first_observation(self) -> Observation:
         """Get somewhere to stand, opening a page if there is not one.
@@ -1216,8 +1251,7 @@ class Task:
                         "opened one rather than giving up",
             }, task_id=self.task_id, step=0)
             try:
-                res = await bridge.request("open_tab", {"url": landing},
-                                           task_id=self.task_id)
+                res = await self._open_tab_steady(landing)
             except BridgeError as open_exc:
                 raise RuntimeError(
                     "there was no web page open and one could not be opened "
@@ -1375,6 +1409,30 @@ class Task:
             "requires_live_human": needs_live_human,
             "timeout_s": config.CONFIRM_TIMEOUT_S,
         }
+        # An explainable confirmation: rules_fired codes alone read like
+        # jargon to the operator who has to answer this modal. Spell out
+        # what each escalation actually means for them.
+        human_rules = {
+            "high-risk-url": "this page is a consequential surface (checkout, payment, billing or banking)",
+            "submit-verb": "submitting commits information to the site",
+            "file-upload": "uploading discloses the file's contents to the site",
+            "protected-field": "the target field holds protected personal data",
+            "password-field": "the target field is a password field",
+            "high-risk-field-name": "the field looks like a credential, card or payment field",
+            "enter-on-high-risk-url": "pressing Enter on this page can commit something",
+            "enter-submits-a-field": "pressing Enter submits what was just typed into this field",
+            "enter-with-unknown-target": "the input this Enter will act on is not identifiable",
+            "bulk-roster-submit": "this sends a bulk selection list",
+            "requires-live-human": "authentication or passwords always require a person, never a standing approval",
+        }
+
+        def humanize(rule: str) -> str:
+            base = rule.split(":", 1)[0]
+            return human_rules.get(base, rule)
+
+        payload["why"] = "Needs your approval because " + "; ".join(
+            humanize(r) for r in (decision.rules_fired or [])
+        ) + (". " + decision.reason if decision.reason else ".")
         self._pending_confirmation = {k: v for k, v in payload.items() if k != "screenshot"}
         await bus.emit("CONFIRMATION_REQUESTED", payload,
                        task_id=self.task_id, step=self.step)

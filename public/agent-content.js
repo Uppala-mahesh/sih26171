@@ -330,12 +330,30 @@ function redact(text) {
 }
 
 /** Which kinds of PII are in this text. The kind is reportable; the value never is. */
+const NAME_UI_RE = /^(my|your|saved|recent|account)\b/
+
+/** NAME patterns ride TitleCase words, so UI chrome ("Account Overview",
+ * "My Coupons", "Saved Cards") matches even though it is nobody's name. The
+ * text redactor already skips those matches via looksLikeUiChrome; make the
+ * detector agree so the visual mask stops painting black bars over ordinary
+ * interface labels. Fail closed: if ANY match looks like a real name, keep
+ * the kind. */
+function nameMatchesAreUiChrome(text, regex) {
+  regex.lastIndex = 0
+  const matches = text.match(regex) || []
+  regex.lastIndex = 0
+  return matches.length > 0 && matches.every(
+    (m) => looksLikeUiChrome(m) || NAME_UI_RE.test(m))
+}
+
 function kindsIn(text) {
   if (!text) return []
   const out = []
   for (const p of PII_PATTERNS.concat(activeExtraPatterns())) {
     p.regex.lastIndex = 0
-    if (p.regex.test(text) && !isKept(text)) out.push(p.type)
+    if (!p.regex.test(text)) continue
+    if (p.type === 'NAME' && nameMatchesAreUiChrome(text, p.regex)) continue
+    if (!isKept(text)) out.push(p.type)
   }
   return out
 }
@@ -345,7 +363,9 @@ function hasPii(text) {
   const all = PII_PATTERNS.concat(activeExtraPatterns())
   return all.some((p) => {
     p.regex.lastIndex = 0
-    return p.regex.test(text) && !isKept(text)
+    if (!p.regex.test(text)) return false
+    if (p.type === 'NAME' && nameMatchesAreUiChrome(text, p.regex)) return false
+    return !isKept(text)
   })
 }
 
