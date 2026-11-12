@@ -46,40 +46,47 @@ not notice" — the exact failure that sank v1 and v2.
       drift cannot ship. *(next sprint)*
 - [ ] Assert gate coverage is complete — fail if `check_gates.py` targets a file
       that no longer exists
-- [ ] Fix the 16 pre-existing `eslint` errors (unchanged from upstream)
+- [x] Fix the pre-existing `eslint` errors (lint is clean)
 
 ---
 
-## 3. Client-side resource instrumentation — ⬜ not started
+## 3. Client-side resource instrumentation — 🟡 partial
 
-**Why:** PS 26171 weights client-side resource utilisation at **20%**, and the
-project currently reports no number for it. It is a claim, not a measurement.
+**Why:** PS 26171 weights client-side resource utilisation at **20%**. A number
+only counts if the live extension measured it.
 
+- [x] Report service-worker JS heap used/limit when Chrome exposes it
+- [x] Report `navigator.deviceMemory` and `navigator.hardwareConcurrency`
+- [x] Report observe round-trip and screenshot-capture latency per observation
+- [x] Report masked-JPEG bytes, or state that the image was withheld
+- [x] Carry the sample on `OBSERVATION_RECEIVED` as `client_resources` and render
+      it in the cockpit
 - [ ] WASM heap high-water mark and bytes of model weights actually loaded
-- [ ] Per-stage inference latency (OCR, CLIP) with p50/p95
+- [ ] Persist p50/p95 across a real run in `docs/06-evidence/`
 - [ ] Main-thread responsiveness during a step (`requestAnimationFrame` lag)
-- [ ] Emit `RESOURCE_SAMPLE` on the bus; render a cockpit panel
-- [ ] Persist a real run to `docs/06-evidence/` — no hand-written numbers
 
 ---
 
-## 4. Real pixel / vision capture — ⬜ not started
+## 4. Real pixel / vision capture — 🟡 partial
 
-**Why:** visual context accuracy is **25%** of the PS score — the largest single
-metric — and today the system mostly *counts* visual surfaces rather than
-scanning them. This is the biggest remaining gap.
+**Why:** visual context accuracy is **25%** of the PS score. The capture path is
+live; selective redaction of newly OCR-detected painted text is the remaining gap.
 
-- [ ] Capture frames on demand rather than every N steps, budgeted per step
-- [ ] OCR regions the DOM walk cannot see (canvas, `background-image`, `<img>`
-      text, shadow DOM)
-- [ ] Route OCR findings through the **same** redaction + verification path, so
-      painted PII gets the identical fail-closed guarantee
-- [ ] Report per step how much of the page was covered by DOM vs pixel
-      perception — and what was **not** covered, stated rather than implied
+- [x] Capture the visible tab on the steps the loop requests, as JPEG
+- [x] Detect QR codes on the raw bitmap and black out their location without
+      reading the payload
+- [x] Paint DOM-derived sensitive boxes as opaque black regions
+- [x] OCR the already-masked image, re-scan it for residual PII, and withhold the
+      screenshot entirely if re-OCR still reads a PII shape (fail-closed)
+- [x] Re-score only DOM-ranked element IDs with MobileCLIP-S0; never invent a
+      coordinate from pixels
+- [x] Show per observation how much was covered by DOM text vs pixels vs not
+      covered at all
+
+- [ ] Feed OCR-detected painted text into a second masking pass. Today residual
+      PII triggers withholding, not selective re-masking of the pixels.
+- [ ] Cover shadow DOM, CSS `background-image` text and cross-origin frames
 - [ ] Publish the honest recall ceiling of each detector separately
-
-*Partially addressed:* the exposure meter now shows DOM % / pixels % / not
-covered % per observation, so the gap is visible. The capture path is not built.
 
 ---
 
@@ -143,7 +150,7 @@ python -m pip install -r server/requirements.txt
 npm run build
 npm run gates      # 14/14
 npm test           # 145
-npm run test:py    # 235
+npm run test:py    # 240
 npm run server     # then open http://127.0.0.1:8787/cockpit
 ```
 

@@ -151,6 +151,7 @@ async def health():
     return {
         "ok": True,
         "browser_connected": bool(live and live.bridge.connected),
+        "agent_session_id": (live.bridge.session_id if live else None),
         "active_task": live.registry.active_task_id if live else None,
         "model_chain": llm.chain_names(),
         "sessions": runtimes.session_count,
@@ -505,6 +506,7 @@ async def ws_cockpit(socket: WebSocket):
             "v": 1, "type": "HELLO", "ts": "", "task_id": None, "step": 0, "seq": 0,
             "payload": {
                 "browser_connected": bridge.connected,
+                "browser_session_id": bridge.session_id,
                 "model_chain": llm.chain_names(),
                 "replay": [e for e in bus.replay(500) if e.get("task_id") == registry.active_task_id or not e.get("task_id")],
                 "active_task": registry.active_task_id,

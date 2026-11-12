@@ -185,6 +185,11 @@ class Observation(BaseModel):
     # value -- so a claim of redaction can actually be checked.
     masked_regions: List[Dict[str, Any]] = Field(default_factory=list)
     walk_ms: int = 0
+    # Real measurements from the extension runtime for this observation, when
+    # the browser exposes them: JS heap used/limit, device memory, logical CPU
+    # threads, and how long the observe round-trip took. This is evidence for
+    # the client-side resource budget, not a request to trust a self-score.
+    client_resources: Dict[str, Any] = Field(default_factory=dict)
     agent_build: str = ""
     # Set when the page being observed is NOT the tab the user is looking at.
     user_tab_note: Optional[str] = None

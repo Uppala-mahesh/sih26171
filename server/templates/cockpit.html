@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Drishti — Agent Cockpit</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="/cockpit.css">
 </head>
 <body>
@@ -39,7 +36,7 @@
 
 <div class="optbar">
   <label title="High-risk actions are still classified and still logged - you just answer once, up front, instead of per action.">
-    <input type="checkbox" id="preapprove" checked aria-describedby="preapprove-hint">
+    <input type="checkbox" id="preapprove" aria-describedby="preapprove-hint">
     Pre-approve this task's high-risk actions (sending, posting, paying)
   </label>
   <span class="hint" id="preapprove-hint" aria-live="polite">off - the agent will stop and ask before anything irreversible</span>
@@ -133,6 +130,8 @@ var COCKPIT_TOKEN = '__DRISHTI_COCKPIT_TOKEN__';
    never a guess. */
 (function () {
   var ws = null, activeTask = null, tickerEl = document.getElementById('ticker');
+  var cockpitSessionId = null, browserConnected = false, runtimeReloading = false;
+  var cockpitHelloReceived = false, taskRunning = false;
   var firstEvent = true;
 
   var CLASS = {
@@ -443,6 +442,18 @@ var COCKPIT_TOKEN = '__DRISHTI_COCKPIT_TOKEN__';
       ['qr masked', String(p.qr_detected || 0)],
       ['tabs', String((p.tabs || []).length)]
     ];
+    var cr = p.client_resources || {};
+    if (cr.observe_ms || cr.js_heap_mb || cr.device_memory_gb) {
+      rows.push(['client observe', (cr.observe_ms != null ? cr.observe_ms + ' ms' : 'not reported')
+        + (cr.capture_ms != null ? ' · capture ' + cr.capture_ms + ' ms' : '')]);
+      rows.push(['js heap', cr.js_heap_mb != null
+        ? cr.js_heap_mb + ' MB used' + (cr.js_heap_limit_mb != null ? ' / ' + cr.js_heap_limit_mb + ' MB limit' : '')
+        : 'not exposed by this browser']);
+      rows.push(['device', (cr.device_memory_gb != null ? cr.device_memory_gb + ' GB' : 'memory n/a')
+        + ' · ' + (cr.hardware_concurrency != null ? cr.hardware_concurrency + ' threads' : 'threads n/a')]);
+      rows.push(['masked image', cr.screenshot_withheld ? 'withheld (fail-closed)'
+        : (cr.screenshot_bytes ? Math.round(cr.screenshot_bytes / 1024) + ' KB' : 'none captured')]);
+    }
     var h = '<dl class="kv">';
     rows.forEach(function (r) { h += '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; });
     h += '</dl>';
@@ -561,7 +572,7 @@ function openModal(p) {
     }
     var p = e.payload || {};
 
-    if (e.type === 'TASK_CREATED') resetPipeline();
+    if (e.type === 'TASK_CREATED') { resetPipeline(); taskRunning = true; }
     var stage = EVENT_STAGE[e.type];
     if (stage) setStage(stage, e.type === 'POLICY_DENIED' || e.type === 'ACTION_FAILED' || e.type === 'VERIFICATION_FAILED');
     if (e.type === 'RECOVERY_STARTED') pipelineEl.classList.add('recovering');
@@ -588,14 +599,22 @@ function openModal(p) {
       case 'STATE_CHANGED':
         set('p-state', p.state, p.state === 'FAILED' ? 'off'
           : (p.state === 'COMPLETED' ? 'on' : ''));
+        if (['COMPLETED', 'FAILED', 'CANCELLED'].indexOf(p.state) !== -1) taskRunning = false;
         document.getElementById('cancel').disabled =
           ['COMPLETED', 'FAILED', 'CANCELLED'].indexOf(p.state) !== -1;
         break;
-      case 'WS_CONNECTED': set('p-browser', 'browser: connected', 'on'); break;
-      case 'WS_DISCONNECTED': set('p-browser', 'browser: disconnected', 'off'); break;
+      case 'WS_CONNECTED':
+        browserConnected = true;
+        set('p-browser', 'browser: connected', 'on');
+        break;
+      case 'WS_DISCONNECTED':
+        browserConnected = false;
+        set('p-browser', 'browser: disconnected', 'off');
+        break;
       case 'TASK_COMPLETED':
       case 'TASK_FAILED':
       case 'TASK_CANCELLED':
+        taskRunning = false;
         document.getElementById('run').disabled = false;
         document.getElementById('cancel').disabled = true;
         pipelineEl.classList.remove('recovering');
@@ -608,6 +627,35 @@ function openModal(p) {
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ v: 1, type: type, ts: new Date().toISOString(), payload: payload || {} }));
     }
+  }
+
+  /* A cockpit tab binds to one extension runtime when it connects. If Chrome
+     restarts the service worker or the extension reconnects before this tab is
+     opened, the tab can stay attached to the old, empty runtime. Poll /health
+     (not a bus event, so it cannot invent progress) and rebind by reloading
+     only when no task is running. */
+  function watchRuntimeBinding() {
+    fetch('/health', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (h) {
+        if (!h || !h.browser_connected || !h.agent_session_id) return;
+        if (!cockpitHelloReceived) return;
+        if (h.agent_session_id !== cockpitSessionId) {
+          if (taskRunning) {
+            banner('The browser reconnected in a new session. Finish or stop this task, then refresh this cockpit.');
+          } else if (!runtimeReloading) {
+            runtimeReloading = true;
+            location.reload();
+          }
+          return;
+        }
+        if (!browserConnected) {
+          browserConnected = true;
+          set('p-browser', 'browser: connected', 'on');
+        }
+      })
+      .catch(function () { /* server restarting; onclose will reconnect */ })
+      .then(function () { setTimeout(watchRuntimeBinding, 5000); });
   }
 
   function connect() {
@@ -625,8 +673,16 @@ function openModal(p) {
     ws.onmessage = function (ev) {
       var m = JSON.parse(ev.data);
       if (m.type === 'HELLO') {
-        set('p-browser', 'browser: ' + (m.payload.browser_connected ? 'connected' : 'disconnected'),
-          m.payload.browser_connected ? 'on' : 'off');
+        cockpitHelloReceived = true;
+        browserConnected = !!m.payload.browser_connected;
+        cockpitSessionId = m.payload.browser_session_id || null;
+        if (m.payload.active_task) {
+          activeTask = m.payload.active_task;
+          taskRunning = true;
+          set('p-task', activeTask);
+        }
+        set('p-browser', 'browser: ' + (browserConnected ? 'connected' : 'disconnected'),
+          browserConnected ? 'on' : 'off');
         set('p-model', 'models: ' + (m.payload.model_chain || []).join(' > '));
         (m.payload.replay || []).forEach(handle);
         // A screenshot event may have fallen outside the bounded replay window
@@ -697,6 +753,7 @@ function openModal(p) {
   document.getElementById('cmd').focus();
 
   connect();
+  setTimeout(watchRuntimeBinding, 5000);
   setInterval(function () { send('PING', {}); }, 25000);
 })();
 </script>

@@ -1,26 +1,19 @@
 import { useEffect, useState } from 'react'
 import {
   Alert,
-  Badge,
   Button,
   Divider,
   Drawer,
   Input,
-  Radio,
-  Space,
-  Tag,
   Typography,
   message,
 } from 'antd'
 import {
   ApiOutlined,
   CheckCircleOutlined,
-  CloudServerOutlined,
-  CodeOutlined,
   SafetyCertificateOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons'
-import type { ReasoningEngine, UserSettings } from '../../shared/types/drishti'
+import type { UserSettings } from '../../shared/types/drishti'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from '../../shared/lib/settingsStorage'
 import './SettingsDrawer.css'
 
@@ -30,10 +23,44 @@ type SettingsDrawerProps = {
   onSettingsChanged?: (settings: UserSettings) => void
 }
 
+type HealthSnapshot = {
+  browserConnected: boolean
+  modelChain: string[]
+  activeTask: string | null
+}
+
+function agentSocketUrl(healthUrl: string): string | null {
+  try {
+    const parsed = new URL(healthUrl)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    const socket = new URL('/ws/agent', parsed)
+    socket.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
+    return socket.toString()
+  } catch {
+    return null
+  }
+}
+
+async function rememberAgentServer(healthUrl: string): Promise<boolean> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return false
+  const socketUrl = agentSocketUrl(healthUrl)
+  if (!socketUrl) return false
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.set({ agentServerUrl: socketUrl }, () => resolve())
+  })
+  try {
+    chrome.runtime?.sendMessage?.({ type: 'AGENT_RECONNECT' })
+  } catch {
+    // The server URL is still stored; the next service-worker boot reconnects.
+  }
+  return true
+}
+
 export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDrawerProps) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
   const [testingServer, setTestingServer] = useState(false)
   const [serverStatus, setServerStatus] = useState<'idle' | 'online' | 'offline'>('idle')
+  const [health, setHealth] = useState<HealthSnapshot | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -41,28 +68,20 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
       loadSettings().then((loaded) => {
         setSettings(loaded)
         setServerStatus('idle')
+        setHealth(null)
       })
     }
   }, [open])
-
-  async function handleEngineChange(engine: ReasoningEngine) {
-    const updated = { ...settings, reasoningEngine: engine }
-    setSettings(updated)
-    await saveSettings(updated)
-    onSettingsChanged?.(updated)
-  }
-
-  async function handleServerUrlChange(url: string) {
-    const updated = { ...settings, serverUrl: url }
-    setSettings(updated)
-  }
 
   async function handleSave() {
     setSaving(true)
     try {
       const updated = await saveSettings(settings)
+      const rewired = await rememberAgentServer(updated.serverUrl)
       onSettingsChanged?.(updated)
-      message.success('Settings saved successfully')
+      message.success(rewired
+        ? 'Saved. The extension is reconnecting to this server.'
+        : 'Settings saved successfully')
     } catch {
       message.error('Failed to save settings')
     } finally {
@@ -73,24 +92,34 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
   async function testServerConnection() {
     setTestingServer(true)
     setServerStatus('idle')
+    setHealth(null)
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     try {
       const controller = new AbortController()
       timeoutId = setTimeout(() => controller.abort(), 3000)
       const res = await fetch(settings.serverUrl, {
         method: 'GET',
+        cache: 'no-store',
         signal: controller.signal,
       })
-      if (res.ok) {
-        setServerStatus('online')
-        message.success('Server is reachable!')
-      } else {
+      if (!res.ok) {
         setServerStatus('offline')
-        message.warning(`Server responded with status: ${res.status}`)
+        message.warning(`Server responded with status ${res.status}`)
+        return
       }
+      const data = await res.json().catch(() => null) as Record<string, unknown> | null
+      setServerStatus('online')
+      setHealth({
+        browserConnected: Boolean(data?.browser_connected),
+        modelChain: Array.isArray(data?.model_chain)
+          ? (data.model_chain as unknown[]).map(String)
+          : [],
+        activeTask: typeof data?.active_task === 'string' ? data.active_task : null,
+      })
+      message.success('Drishti server is reachable')
     } catch {
       setServerStatus('offline')
-      message.error('Server is unreachable. Make sure demo-server is running.')
+      message.error('Drishti server is unreachable. Start it with npm run server.')
     } finally {
       if (timeoutId) clearTimeout(timeoutId)
       setTestingServer(false)
@@ -109,89 +138,33 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
           <SafetyCertificateOutlined className="header-icon" />
           <div>
             <div className="title-text">Drishti Settings</div>
-            <div className="subtitle-text">Reasoning Engine & Privacy Options</div>
+            <div className="subtitle-text">Local server & on-device stack</div>
           </div>
         </div>
       }
       width={360}
     >
       <div className="settings-content">
-        {/* Reasoning Engine Section */}
         <section className="settings-section">
-          <Typography.Text className="section-label">Reasoning Engine</Typography.Text>
+          <Typography.Text className="section-label">Local Drishti Server</Typography.Text>
           <Typography.Paragraph className="section-hint">
-            Choose where task intent classification and element selection takes place.
-          </Typography.Paragraph>
-
-          <Radio.Group
-            className="engine-radio-group"
-            onChange={(e) => handleEngineChange(e.target.value)}
-            value={settings.reasoningEngine}
-          >
-            <Radio.Button className="engine-card" value="auto">
-              <div className="card-header">
-                <Space>
-                  <ThunderboltOutlined className="card-icon" />
-                  <span className="card-title">Auto (Recommended)</span>
-                </Space>
-                <Tag color="cyan">Balanced</Tag>
-              </div>
-              <div className="card-desc">
-                Executes local ONNX inference on-device first. Automatically falls back to sanitized server reasoning if local model confidence is low.
-              </div>
-            </Radio.Button>
-
-            <Radio.Button className="engine-card" value="onnx">
-              <div className="card-header">
-                <Space>
-                  <CodeOutlined className="card-icon onnx-icon" />
-                  <span className="card-title">Local ONNX (Air-Gapped)</span>
-                </Space>
-                <Tag color="green">Zero Leak</Tag>
-              </div>
-              <div className="card-desc">
-                100% on-device WebAssembly ML. Zero network requests sent. Strict privacy for high-security environments.
-              </div>
-            </Radio.Button>
-
-            <Radio.Button className="engine-card" value="server">
-              <div className="card-header">
-                <Space>
-                  <CloudServerOutlined className="card-icon server-icon" />
-                  <span className="card-title">Server Reasoning</span>
-                </Space>
-                <Tag color="purple">Remote API</Tag>
-              </div>
-              <div className="card-desc">
-                Sends sanitized, masked page graphs directly to the designated reasoning endpoint for external LLM reasoning.
-              </div>
-            </Radio.Button>
-          </Radio.Group>
-        </section>
-
-        <Divider className="settings-divider" />
-
-        {/* Server URL Configuration */}
-        <section className="settings-section">
-          <Typography.Text className="section-label">Reasoning Server URL</Typography.Text>
-          <Typography.Paragraph className="section-hint">
-            Endpoint used when Server or Auto fallback mode is engaged.
+            The extension sends only sanitized context to this server on your own machine.
+            Checking the health URL below also confirms the server is running.
           </Typography.Paragraph>
 
           <div className="server-input-group">
             <Input
-              disabled={settings.reasoningEngine === 'onnx'}
-              onChange={(e) => handleServerUrlChange(e.target.value)}
-              placeholder="http://localhost:8787/reason"
+              onChange={(e) => {
+                const updated = { ...settings, serverUrl: e.target.value }
+                setSettings(updated)
+                setServerStatus('idle')
+                setHealth(null)
+              }}
+              placeholder="http://127.0.0.1:8787/health"
               prefix={<ApiOutlined style={{ color: '#64748b' }} />}
               value={settings.serverUrl}
             />
-            <Button
-              disabled={settings.reasoningEngine === 'onnx'}
-              loading={testingServer}
-              onClick={testServerConnection}
-              type="default"
-            >
+            <Button loading={testingServer} onClick={testServerConnection} type="default">
               Test
             </Button>
           </div>
@@ -200,7 +173,14 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
             <Alert
               className="server-alert"
               icon={<CheckCircleOutlined />}
-              message="Server is online & responding"
+              message="Drishti server is online"
+              description={health ? (
+                <span>
+                  Browser: {health.browserConnected ? 'connected' : 'not connected'}
+                  {health.modelChain.length > 0 ? ` · models: ${health.modelChain.join(' > ')}` : ''}
+                  {health.activeTask ? ' · task running' : ''}
+                </span>
+              ) : undefined}
               showIcon
               type="success"
             />
@@ -209,6 +189,7 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
             <Alert
               className="server-alert"
               message="Server unreachable at this address"
+              description="Start it with: npm run server — then load the extension from dist/."
               showIcon
               type="error"
             />
@@ -217,59 +198,37 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
 
         <Divider className="settings-divider" />
 
-        {/* Summary Language Preference */}
         <section className="settings-section">
-          <Typography.Text className="section-label">Summary & Assistant Language</Typography.Text>
-          <Typography.Paragraph className="section-hint">
-            Select the preferred language for on-device page summaries and guidance.
-          </Typography.Paragraph>
-
-          <Radio.Group
-            onChange={(e) => {
-              const updated = { ...settings, summaryLanguage: e.target.value }
-              setSettings(updated)
-              saveSettings(updated)
-              onSettingsChanged?.(updated)
-            }}
-            value={settings.summaryLanguage || 'en'}
-            style={{ width: '100%', display: 'flex', gap: '8px' }}
-          >
-            <Radio.Button value="en" style={{ flex: 1, textAlign: 'center' }}>English</Radio.Button>
-            <Radio.Button value="hi" style={{ flex: 1, textAlign: 'center' }}>हिन्दी (Hindi)</Radio.Button>
-            <Radio.Button value="hinglish" style={{ flex: 1, textAlign: 'center' }}>Hinglish</Radio.Button>
-          </Radio.Group>
+          <Typography.Text className="section-label">What runs on this device</Typography.Text>
+          <div className="specs-card">
+            <div className="spec-row">
+              <span className="spec-key">Screen OCR</span>
+              <span className="spec-val">Tesseract · bundled · offline</span>
+            </div>
+            <div className="spec-row">
+              <span className="spec-key">Visual grounding</span>
+              <span className="spec-val">MobileCLIP-S0 · bundled · offline</span>
+            </div>
+            <div className="spec-row">
+              <span className="spec-key">PII masking</span>
+              <span className="spec-val">Deterministic DOM sanitizer · in-page</span>
+            </div>
+            <div className="spec-row">
+              <span className="spec-key">Reasoning</span>
+              <span className="spec-val">Cloud model · sanitized context only</span>
+            </div>
+          </div>
         </section>
 
         <Divider className="settings-divider" />
 
-        {/* Model & System Specifications */}
         <section className="settings-section">
-          <Typography.Text className="section-label">Active Model Specs</Typography.Text>
-          <div className="specs-card">
-            <div className="spec-row">
-              <span className="spec-key">Architecture</span>
-              <span className="spec-val">Linear Softmax (ONNX 17)</span>
-            </div>
-            <div className="spec-row">
-              <span className="spec-key">Runtime</span>
-              <span className="spec-val">WASM / ONNX Runtime Web</span>
-            </div>
-            <div className="spec-row">
-              <span className="spec-key">Intent Classes</span>
-              <span className="spec-val">8 (Login, Pay, Save, Send, Search, Delete, Navigate, Download)</span>
-            </div>
-            <div className="spec-row">
-              <span className="spec-key">Features / Vocab</span>
-              <span className="spec-val">90 Token Vectors</span>
-            </div>
-            <div className="spec-row">
-              <span className="spec-key">Air-Gap Status</span>
-              <Badge
-                status={settings.reasoningEngine === 'onnx' ? 'success' : 'processing'}
-                text={settings.reasoningEngine === 'onnx' ? 'Strictly Local' : 'Local + Telemetry'}
-              />
-            </div>
-          </div>
+          <Typography.Text className="section-label">Privacy boundary</Typography.Text>
+          <Typography.Paragraph className="section-hint">
+            Page text and field values are masked in the browser before serialization.
+            The raw screenshot never leaves the browser; the masked screenshot is withheld
+            entirely if the on-device re-OCR finds residual personal data.
+          </Typography.Paragraph>
         </section>
 
         <div className="settings-actions">

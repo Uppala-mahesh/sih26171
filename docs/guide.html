@@ -175,7 +175,7 @@ td code { font-size:8pt; }
       <div><b>Organisation</b>Department of Space / ISRO</div>
       <div><b>Track</b>Smart Automation · Software</div>
       <div><b>Repository</b>sih26171-v3</div>
-      <div><b>Checks passing</b>14 automated gates · 145 + 235 tests</div>
+      <div><b>Checks passing</b>14 automated gates · 145 + 240 tests</div>
       <div><b>On-device models</b>72 MB shipped inside the extension</div>
     </div>
     <p class="note" style="margin-top:8px">Every figure here was produced by running the
@@ -228,7 +228,7 @@ guide comes from a command you can run, and every gap is named.</p>
 <h2>The three commands that prove everything</h2>
 <pre><code>npm run gates      # 14 automated checks on safety rules
 npm test           # 145 tests of the browser extension
-npm run test:py    # 235 tests of the server</code></pre>
+npm run test:py    # 240 tests of the server</code></pre>
 
 <h2>Where the code lives</h2>
 <pre><code>sih26171-v3/
@@ -1239,7 +1239,7 @@ honest one: what nothing managed to understand.</div>
 <tr><th style="width:34%">Check</th><th style="width:22%">Command</th><th>Result</th></tr>
 <tr><td>Safety gates</td><td><code>npm run gates</code></td><td><b>14 / 14 passing</b></td></tr>
 <tr><td>Extension tests</td><td><code>npm test</code></td><td><b>145 passing</b> (9 files, 1,249 lines)</td></tr>
-<tr><td>Server tests</td><td><code>npm run test:py</code></td><td><b>235 passing</b> (13 files, 2,018 lines)</td></tr>
+<tr><td>Server tests</td><td><code>npm run test:py</code></td><td><b>240 passing</b> (13 files, 2,018 lines)</td></tr>
 <tr><td>Production build</td><td><code>npm run build</code></td><td>clean</td></tr>
 </table>
 
@@ -1666,10 +1666,8 @@ task (CR-V3-006).
 <tr><td><code>activeTab</code> <code>tabs</code> <code>scripting</code></td><td>Read and act on the tab you are working in</td></tr>
 <tr><td><code>storage</code></td><td>Remembering the session and settings between restarts</td></tr>
 <tr><td><code>offscreen</code></td><td>A hidden page to run the picture-reading models</td></tr>
-<tr><td><code>debugger</code></td><td>Two things only: taking pictures and dismissing pop-up dialogs</td></tr>
+<tr><td><code>debugger</code></td><td>Two things only: selecting a file for upload and dismissing native dialogs</td></tr>
 <tr><td><code>downloads</code></td><td>Downloading files, since that is a permitted action</td></tr>
-<tr><td><code>webNavigation</code> <code>notifications</code></td><td>Knowing when a page has finished loading, and telling you
-when something needs attention</td></tr>
 <tr><td><code>microphone</code></td><td>Optional voice input in the popup</td></tr>
 <tr><td><code>&lt;all_urls&gt;</code></td><td>The agent must work on any site — that is the product</td></tr>
 </table>

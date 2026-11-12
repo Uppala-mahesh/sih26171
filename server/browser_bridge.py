@@ -254,5 +254,8 @@ class _BrowserBridgeProxy:
     def __setattr__(self, name: str, value) -> None:
         setattr(_current_bridge.get(), name, value)
 
+    def __delattr__(self, name: str) -> None:
+        delattr(_current_bridge.get(), name)
+
 
 bridge = _BrowserBridgeProxy()

@@ -282,6 +282,7 @@ class Task:
             "ocr_leak_kinds": obs.ocr_leak_kinds,
             "visual_scores": len(obs.visual_scores),
             "visual_ms": obs.visual_ms,
+            "client_resources": obs.client_resources,
             # What this observation actually proved, not what it attempted.
             # WITHHOLD means no redaction claim may be made for this step.
             "perception_verdict": obs.perception_verdict,

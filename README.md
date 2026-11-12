@@ -152,6 +152,9 @@ after confirming `window.ai` exists in your Chrome build.
 npm run server
 ```
 
+On Windows, `start-drishti.bat` does the same from Explorer: it starts the
+local server, waits for `/health`, and opens the cockpit.
+
 Then load the extension: `chrome://extensions` → Developer mode → **Load
 unpacked** → select `dist/`. Open the cockpit at
 <http://127.0.0.1:8787/cockpit>. The `browser:` pill turns green when the
@@ -368,9 +371,12 @@ Full engineering documentation lives in [`docs/`](docs/README.md):
 |---|---|
 | Anti-pretence gates | **14 / 14** |
 | JavaScript tests | **145 passed** |
-| Python tests | **235 passed** |
+| Python tests | **240 passed** |
 | Production build | clean |
+| ESLint | clean |
 
-Not yet measured, and said so in the evidence file rather than shown as zero:
-client-side resource utilisation (20% of the PS score), painted/canvas text
-recall, Firefox parity, cross-origin iframe coverage.
+Partially measured: client-side resources now report service-worker JS heap,
+device memory, logical CPU threads, observe/capture latency and masked-image
+bytes from the live extension runtime. Still not measured: WASM heap high-water
+mark, p50/p95 latency, painted-text recall, Firefox parity, and cross-origin
+iframe coverage. Those are listed as gaps rather than shown as zero.

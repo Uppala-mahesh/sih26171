@@ -238,5 +238,8 @@ class _EventBusProxy:
     def __setattr__(self, name: str, value) -> None:
         setattr(_current_bus.get(), name, value)
 
+    def __delattr__(self, name: str) -> None:
+        delattr(_current_bus.get(), name)
+
 
 bus = _EventBusProxy()

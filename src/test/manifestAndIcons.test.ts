@@ -19,9 +19,11 @@ describe('extension manifest', () => {
   })
 
   it('requests every permission the agent genuinely uses', () => {
-    for (const p of ['tabs', 'scripting', 'storage', 'webNavigation', 'debugger', 'activeTab']) {
+    for (const p of ['tabs', 'scripting', 'storage', 'debugger', 'activeTab']) {
       expect(manifest.permissions).toContain(p)
     }
+    expect(manifest.permissions).not.toContain('webNavigation')
+    expect(manifest.permissions).not.toContain('notifications')
   })
 
   it('points at the service worker that holds the WebSocket', () => {

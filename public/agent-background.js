@@ -23,7 +23,7 @@ import './jsqr/jsQR.js'
 // unless something says so out loud. The content script has carried a build id
 // for exactly this reason; the worker had none, so every fix to tab resolution
 // (which lives HERE) was unverifiable from the outside.
-const AGENT_SW_BUILD = 'sw-b6-paste-table-page-verb'
+const AGENT_SW_BUILD = 'sw-b7-fast-handshake'
 
 const DEFAULT_SERVER = 'ws://127.0.0.1:8787/ws/agent'
 const KEEPALIVE_MS = 20000
@@ -158,22 +158,28 @@ async function connect() {
     return
   }
 
-  ws.onopen = async () => {
+  ws.onopen = () => {
     connected = true
     console.log('[agent] WS connected ->', base)
-    
-    const local_model_status = await probeLocalModel();
-    chrome.storage.local.set({ local_model_status });
-    
+
+    // Register the browser immediately. Probing the optional on-device model
+    // can take seconds (and may start a large download), so it must never sit
+    // in front of the handshake that tells the cockpit a browser is present.
     send('WS_CONNECTED', {
       session_id: sid,
       user_agent: navigator.userAgent,
       extension_version: chrome.runtime.getManifest().version,
       sw_build: AGENT_SW_BUILD,
-      local_model_status: local_model_status
+      local_model_status: 'checking'
     })
     startKeepalive()
     setBadge('ON', '#0f766e')
+
+    probeLocalModel()
+      .then((status) => {
+        chrome.storage.local.set({ local_model_status: status })
+      })
+      .catch((e) => console.error('[agent] Local model probe failed:', e))
   }
 
   ws.onmessage = async (event) => {
@@ -824,6 +830,7 @@ async function handleBridgeRequest(payload) {
       return { ok: true, result: { tabs: await listTabs(), active_tab_id: await resolveTabId(null) } }
 
     case 'observe': {
+      const observeStarted = performance.now()
       const tabId = await resolveTabId(args.tab_id)
       // Say plainly when the page the USER is looking at is not the page being
       // observed. A request like "summarise this page" made from a chrome://
@@ -862,8 +869,11 @@ async function handleBridgeRequest(payload) {
       obs.tabs = await listTabs()
       obs.active_tab_id = tabId
       obs.user_tab_note = userTabNote
+      let captureMs = null
       if (args.screenshot) {
+        const captureStarted = performance.now()
         const shot = await captureRedacted(tabId, obs.sensitive_boxes, obs.viewport)
+        captureMs = Math.round(performance.now() - captureStarted)
         obs.screenshot = shot.ok ? shot.screenshot : null
         obs.screenshot_error = shot.ok ? null : shot.error
         obs.qr_detected = shot.ok ? shot.qr_detected : 0
@@ -910,6 +920,21 @@ async function handleBridgeRequest(payload) {
           obs.visual_error = null
           obs.visual_ms = null
         }
+      }
+      const heap = performance.memory || {}
+      obs.client_resources = {
+        measured_in: 'extension_service_worker',
+        observe_ms: Math.round(performance.now() - observeStarted),
+        capture_ms: captureMs,
+        js_heap_mb: heap.usedJSHeapSize
+          ? Math.round((heap.usedJSHeapSize / 1048576) * 10) / 10 : null,
+        js_heap_limit_mb: heap.jsHeapSizeLimit
+          ? Math.round((heap.jsHeapSizeLimit / 1048576) * 10) / 10 : null,
+        device_memory_gb: navigator.deviceMemory || null,
+        hardware_concurrency: navigator.hardwareConcurrency || null,
+        screenshot_bytes: obs.screenshot
+          ? Math.ceil((obs.screenshot.length * 3) / 4) : 0,
+        screenshot_withheld: Boolean(obs.screenshot_error),
       }
       return { ok: true, result: obs }
     }

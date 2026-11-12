@@ -29,7 +29,7 @@
     <div class="mark" aria-hidden="true">◉</div>
     <div>
       <h1>Drishti Privacy Policy</h1>
-      <p class="updated">Effective date: 30 September 2026</p>
+      <p class="updated">Effective date: 12 November 2026</p>
     </div>
   </header>
 
@@ -38,7 +38,7 @@
   </div>
 
   <h2>1. Who operates Drishti</h2>
-  <p>Drishti is developed by the project team listed in the repository README. Privacy questions and data-deletion requests can be sent to the address published in that README.</p>
+  <p>Drishti is the SIH26171 project team's browser agent, maintained by Uppala Mahesh. Questions, privacy concerns, and deletion requests can be raised at <a href="https://github.com/Uppala-mahesh/sih26171/issues">github.com/Uppala-mahesh/sih26171/issues</a>.</p>
 
   <h2>2. Information Drishti processes</h2>
   <p>When you explicitly ask Drishti to inspect a page or complete a browser task, the extension may process:</p>
@@ -56,20 +56,20 @@
   <p>Information is used only to provide and secure the browser-assistant functionality requested by the user, including understanding the current page, planning actions, enforcing safety policies, requesting confirmation, executing permitted actions, verifying results, diagnosing failures, and maintaining tamper-evident task records.</p>
 
   <h2>4. Local processing and cloud reasoning</h2>
-  <p>Sensitive-data detection, screenshot masking, OCR verification, and supported visual grounding run inside the extension using packaged code and models. After this local processing, the minimum page context needed for a task may be transmitted over encrypted HTTPS or WSS connections to the Drishti backend and a configured AI model provider, such as Google Gemini, Groq, OpenRouter, or OpenAI, for planning and reasoning.</p>
-  <p>Drishti does not download or execute remote JavaScript or WebAssembly. Cloud responses are structured, non-executable data interpreted by fixed logic packaged with the extension.</p>
+  <p>Sensitive-data detection, DOM redaction, screenshot masking, QR suppression, OCR verification, and visual grounding run inside the extension using packaged code and models. The companion Drishti server runs on the same machine at <strong>127.0.0.1</strong> by default and receives only the sanitized context the extension has already produced. It is not a hosted Drishti backend and does not require an account.</p>
+  <p>For planning and reasoning, sanitized context may be sent over HTTPS to the AI model provider configured by the user, such as Google Gemini, Groq, OpenRouter, or OpenAI. A raw screenshot is never sent: the extension sends only the masked image, and withholds it entirely if its own re-OCR pass finds residual personal data. Drishti does not download or execute remote JavaScript or WebAssembly; cloud responses are structured, non-executable data interpreted by fixed local logic.</p>
 
   <h2>5. Sharing and sale of data</h2>
   <p>Drishti does not sell user data and does not use browser data for personalized advertising, retargeting, credit decisions, or unrelated profiling. Data is transferred to service providers only when necessary to provide the user-requested functionality, maintain security, comply with law, or investigate abuse. Service providers process data under their own applicable terms and privacy policies.</p>
 
   <h2>6. Storage and retention</h2>
-  <p>Extension preferences, installation credentials, and limited interface history may remain in Chrome storage until you clear the extension's data or uninstall it. The backend may retain task audit records and operational logs for service operation, troubleshooting, security, and compliance. Records are retained until they are deleted as part of operational maintenance or in response to a valid deletion request, unless a longer period is required by law or necessary to protect the service from abuse.</p>
+  <p>Extension preferences, installation credentials, and limited interface history may remain in Chrome storage until you clear the extension's data or uninstall it. The local server writes task audit records to the user's own machine under <code>~/.drishti/tasks</code>; those files remain until the user deletes them. Drishti does not operate a remote account database for this build, so there is no server-side retention period to request.</p>
 
   <h2>7. Security</h2>
-  <p>Drishti uses HTTPS and WSS for information transmitted over the public internet. Each extension installation uses an independent high-entropy credential so its browser connection, task registry, and event stream are isolated from other installations. No method of storage or transmission is completely secure, and users should avoid asking the extension to process information that is not necessary for their task.</p>
+  <p>The local Drishti server binds to loopback only, so it is not reachable from other machines on the network. Each extension installation uses an independent high-entropy credential so its browser connection, task registry, and event stream are isolated. Connections from the extension to the local server use loopback WebSocket; connections from the local server to a cloud model provider use HTTPS. No method of storage or transmission is completely secure, and users should avoid asking the extension to process information that is not necessary for their task.</p>
 
   <h2>8. User choices and deletion</h2>
-  <p>You control when Drishti is invoked and which tasks it performs. Sensitive actions may require your confirmation. You can stop using the service, clear extension storage, or uninstall the extension at any time. To request deletion of backend task records associated with your installation, use the contact address published in the project README with the subject “Drishti Data Deletion Request.” Additional verification may be required to prevent unauthorized deletion requests.</p>
+  <p>You control when Drishti is invoked and which tasks it performs. Sensitive actions may require your confirmation. You can stop using the service, clear extension storage, or uninstall the extension at any time. To delete local task records, remove the <code>~/.drishti</code> directory on your machine. Because this build has no hosted account, there is no remote profile to delete.</p>
 
   <h2>9. Children's privacy</h2>
   <p>Drishti is not directed to children under 13 and is not intended to knowingly collect personal information from children.</p>
@@ -80,7 +80,7 @@
   <h2>11. Chrome Web Store Limited Use</h2>
   <p>Drishti's use of information received from Chrome APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements. Chrome API data is used only to provide or improve the extension's single, user-facing purpose and is not transferred for advertising or unrelated purposes.</p>
 
-  <footer>Drishti · on-device visual perception for light-weight browser agents</footer>
+  <footer>Drishti · on-device visual perception for light-weight browser agents · <a href="https://github.com/Uppala-mahesh/sih26171">source</a></footer>
 </main>
 </body>
 </html>
