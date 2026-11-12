@@ -24,6 +24,15 @@ export type ChatMessage = {
   text: string
 }
 
+export type AgentEffort = 'fast' | 'balanced' | 'deep'
+export type AgentMode = 'agent' | 'ask'
+
+export const EFFORT_LABELS: Record<AgentEffort, string> = {
+  fast: 'Fast',
+  balanced: 'Balanced',
+  deep: 'Deep',
+}
+
 export type ChatHistoryThread = {
   id: string
   title: string
@@ -159,8 +168,29 @@ function describe(e: Envelope): string | null {
  * useless. It belongs in storage, not in a React hook.
  */
 const PRE_APPROVE_KEY = 'agent.preApprove'
+const EFFORT_KEY = 'agent.effort'
 const CHAT_HISTORY_KEY = 'agent.chatHistory'
 const MAX_HISTORY_THREADS = 20
+
+function loadEffort(apply: (value: AgentEffort) => void) {
+  try {
+    chrome.storage?.local?.get(EFFORT_KEY, (bag) => {
+      if (chrome.runtime?.lastError) return
+      const value = bag?.[EFFORT_KEY]
+      if (value === 'fast' || value === 'balanced' || value === 'deep') apply(value)
+    })
+  } catch {
+    /* not running as an extension; the default stands */
+  }
+}
+
+function saveEffort(value: AgentEffort) {
+  try {
+    chrome.storage?.local?.set({ [EFFORT_KEY]: value })
+  } catch {
+    /* nothing to persist to */
+  }
+}
 
 function loadChatHistory(): ChatHistoryThread[] {
   try {
@@ -216,6 +246,8 @@ export function useAgentRunner() {
   const [authToken, setAuthToken] = useState('')
   const [pending, setPending] = useState<PendingConfirmation | null>(null)
   const [preApprove, setPreApproveState] = useState(false)
+  const [effort, setEffortState] = useState<AgentEffort>('balanced')
+  const [agentMode, setAgentModeState] = useState<AgentMode>('agent')
   // Which page the agent would act on. Empty means there is none.
   const [targetPage, setTargetPage] = useState<string | null>(null)
 
@@ -276,12 +308,30 @@ export function useAgentRunner() {
   // Restore the operator's standing answer before anything can ask them again.
   useEffect(() => {
     loadPreApprove(setPreApproveState)
+    loadEffort(setEffortState)
   }, [])
 
   const setPreApprove = useCallback((value: boolean) => {
     setPreApproveState(value)
     savePreApprove(value)
   }, [])
+
+  const setEffort = useCallback((value: AgentEffort) => {
+    setEffortState(value)
+    saveEffort(value)
+  }, [])
+
+  const setAgentMode = useCallback((value: AgentMode) => {
+    setAgentModeState(value)
+    // Ask mode never needs a standing approval; keep the two controls from
+    // contradicting each other in the UI.
+    if (value === 'ask') {
+      setPreApproveState(false)
+      savePreApprove(false)
+    }
+  }, [])
+
+  const dismissError = useCallback(() => setError(''), [])
 
   const socketRef = useRef<WebSocket | null>(null)
   // runAgent is declared before detach, so reach it through a ref.
@@ -593,9 +643,15 @@ export function useAgentRunner() {
     setBlocked([])
     push('user', command)
 
-    if (send('TASK_CREATE', { command, pre_approved: preApprove, privacy_mode: mode })) {
+    if (send('TASK_CREATE', {
+      command,
+      pre_approved: agentMode === 'agent' && preApprove,
+      privacy_mode: mode,
+      effort,
+      answer_only: agentMode === 'ask',
+    })) {
       setIsRunning(true)
-      setStatusText('Planning…')
+      setStatusText(agentMode === 'ask' ? 'Reading the page…' : 'Planning…')
       setTask('')
       // A task started from the popup is a task you cannot watch: the agent
       // opens a tab, focus moves, Chrome destroys the popup. The task itself
@@ -701,6 +757,11 @@ export function useAgentRunner() {
     pending,
     preApprove,
     setPreApprove,
+    effort,
+    setEffort,
+    agentMode,
+    setAgentMode,
+    dismissError,
     approve,
     approveAll,
     deny,

@@ -161,6 +161,12 @@ async def health():
             "confirm_timeout_s": config.CONFIRM_TIMEOUT_S,
             "login_timeout_s": config.LOGIN_TIMEOUT_S,
             "screenshot_every": config.SCREENSHOT_EVERY,
+            "effort_profiles": {
+                "fast": {"max_steps": 30, "wall_clock_s": 300, "vision": False},
+                "balanced": {"max_steps": config.MAX_STEPS,
+                             "wall_clock_s": config.WALL_CLOCK_S, "vision": True},
+                "deep": {"max_steps": 90, "wall_clock_s": 900, "vision": True},
+            },
         },
     }
 
@@ -255,6 +261,8 @@ async def get_trace(task_id: str):
 
 class StartBody(BaseModel):
     command: str
+    effort: str = "balanced"
+    answer_only: bool = False
 
 
 @app.post("/tasks")
@@ -262,7 +270,8 @@ async def start_task(body: StartBody):
     if not body.command.strip():
         raise HTTPException(status_code=400, detail="command is empty")
     try:
-        task = await registry.start(body.command.strip())
+        task = await registry.start(body.command.strip(), effort=body.effort,
+                                    answer_only=body.answer_only)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"task_id": task.task_id, "state": task.state}
@@ -556,7 +565,9 @@ async def _handle_cockpit_message(msg: Dict[str, Any], socket: WebSocket) -> Non
         try:
             await registry.start(command,
                                  pre_approved=bool(payload.get("pre_approved")),
-                                 privacy_mode=str(payload.get("privacy_mode") or "balanced"))
+                                 privacy_mode=str(payload.get("privacy_mode") or "balanced"),
+                                 effort=str(payload.get("effort") or "balanced"),
+                                 answer_only=bool(payload.get("answer_only")))
         except RuntimeError as exc:
             await bus.emit("ERROR", {"error": str(exc)})
         return

@@ -1,8 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { ArrowUpOutlined, AudioMutedOutlined, AudioOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons'
+import {
+  ArrowUpOutlined,
+  AudioMutedOutlined,
+  AudioOutlined,
+  CloseOutlined,
+  LockOutlined,
+  PlusOutlined,
+  SettingOutlined,
+} from '@ant-design/icons'
 import { Button, Input, Select, Tooltip, Typography } from 'antd'
-import type { ChatHistoryThread, ChatMessage, MaskingReport, PendingConfirmation } from '../../features/agent-runner/model'
+import type {
+  AgentEffort,
+  AgentMode,
+  ChatHistoryThread,
+  ChatMessage,
+  MaskingReport,
+  PendingConfirmation,
+} from '../../features/agent-runner/model'
+import { EFFORT_LABELS } from '../../features/agent-runner/model'
 import { privacyModes } from '../../entities/mode/model'
 import type { PrivacyMode } from '../../shared/types/drishti'
 import { openMicrophonePermissionTab, useSpeechToText } from '../../shared/lib/useSpeechToText'
@@ -13,6 +29,24 @@ import './ChatShell.css'
    bar: true black ink with a tiny mono label. What the model never saw, the
    operator sees redacted too -- the report stream and its own summary agree. */
 const REDACTED_TOKEN = /\[REDACTED:[A-Za-z0-9_]+\]/g
+
+type BrowserTab = { id?: number; url?: string; title?: string }
+type TabsApi = {
+  query: (
+    info: { active: boolean; currentWindow: boolean },
+    callback: (tabs: BrowserTab[]) => void,
+  ) => void
+  sendMessage: (
+    tabId: number,
+    message: { type: string },
+    callback: (reply?: { text?: string }) => void,
+  ) => void
+}
+
+function tabsApi(): TabsApi | null {
+  if (typeof chrome === 'undefined') return null
+  return (chrome as unknown as { tabs?: TabsApi }).tabs ?? null
+}
 
 export function DocketText({ value }: { value: string | undefined | null }) {
   if (!value) return null
@@ -38,6 +72,9 @@ type ChatShellProps = {
   isRunning: boolean
   messages: ChatMessage[]
   mode: PrivacyMode
+  effort: AgentEffort
+  agentMode: AgentMode
+  error?: string
   statusText: string
   task: string
   maskedScreenshot?: string | null
@@ -58,6 +95,9 @@ type ChatShellProps = {
   onDetach?: () => void
   isDetached?: boolean
   onModeChange: (mode: PrivacyMode) => void
+  onEffortChange: (effort: AgentEffort) => void
+  onAgentModeChange: (mode: AgentMode) => void
+  onDismissError?: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onTaskChange: (task: string) => void
   localModelStatus?: string | null
@@ -68,6 +108,9 @@ export function ChatShell({
   isRunning,
   messages,
   mode,
+  effort,
+  agentMode,
+  error,
   statusText,
   task,
   maskedScreenshot,
@@ -88,6 +131,9 @@ export function ChatShell({
   onDetach,
   isDetached = false,
   onModeChange,
+  onEffortChange,
+  onAgentModeChange,
+  onDismissError,
   onSubmit,
   onTaskChange,
   localModelStatus,
@@ -96,6 +142,9 @@ export function ChatShell({
   const [shieldOpen, setShieldOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<'chat' | 'details' | 'history'>('chat')
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [contextOpen, setContextOpen] = useState(false)
+  const [contextNote, setContextNote] = useState('')
+  const contextRef = useRef<HTMLDivElement | null>(null)
 
   // ---- Speech-to-Text ---------------------------------------------------
   // The hook handles Hindi, Hinglish, and English in a single pass.
@@ -173,6 +222,102 @@ export function ChatShell({
     event.currentTarget.form?.requestSubmit()
   }
 
+  // ---- context tray -------------------------------------------------------
+  // The "+" used to be decoration. These four actions put something real into
+  // the composer, and every one of them is inspectable before it is sent.
+  const appendContext = (raw: string) => {
+    const text = raw.trim()
+    if (!text) return
+    const base = task.trim()
+    onTaskChange(base ? `${base} ${text}` : text)
+    setContextOpen(false)
+    setContextNote('')
+  }
+
+  const flashContext = (note: string) => {
+    setContextNote(note)
+    window.setTimeout(() => setContextNote(''), 3500)
+  }
+
+  const addCurrentPage = () => {
+    const tabs = tabsApi()
+    if (!tabs) {
+      flashContext('Page context is available inside the extension.')
+      return
+    }
+    try {
+      tabs.query({ active: true, currentWindow: true }, (found) => {
+        if (chrome.runtime?.lastError) {
+          flashContext('Could not read the active tab.')
+          return
+        }
+        const tab = found?.[0]
+        if (!tab?.url || !/^https?:/i.test(tab.url)) {
+          flashContext('Open a normal http(s) page first.')
+          return
+        }
+        appendContext(`On this page (${tab.title || 'untitled page'} — ${tab.url}): `)
+      })
+    } catch {
+      flashContext('Page context is available inside the extension.')
+    }
+  }
+
+  const addSelection = () => {
+    const tabs = tabsApi()
+    if (!tabs) {
+      flashContext('Selection is available inside the extension.')
+      return
+    }
+    try {
+      tabs.query({ active: true, currentWindow: true }, (found) => {
+        const tabId = found?.[0]?.id
+        if (tabId === undefined) {
+          flashContext('No active page to read a selection from.')
+          return
+        }
+        tabs.sendMessage(tabId, { type: 'AGENT_SELECTION' }, (reply) => {
+          if (chrome.runtime?.lastError) {
+            flashContext('Reload the page, then try again.')
+            return
+          }
+          const text = typeof reply?.text === 'string' ? reply.text.trim() : ''
+          if (!text) {
+            flashContext('Select some text on the page first.')
+            return
+          }
+          appendContext(`Selected text from the page: "${text.slice(0, 1500)}"`)
+        })
+      })
+    } catch {
+      flashContext('Selection is available inside the extension.')
+    }
+  }
+
+  const pasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text.trim()) {
+        flashContext('Clipboard is empty.')
+        return
+      }
+      appendContext(text.slice(0, 2000))
+    } catch {
+      flashContext('Clipboard permission was not granted.')
+    }
+  }
+
+  useEffect(() => {
+    if (!contextOpen) return
+    const onDown = (event: MouseEvent) => {
+      if (contextRef.current && !contextRef.current.contains(event.target as Node)) {
+        setContextOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [contextOpen])
+
   return (
     <main className="chat-popup" aria-label="Drishti assistant">
       <section className="assistant-header" aria-label="Assistant status">
@@ -189,7 +334,11 @@ export function ChatShell({
               />
             </Typography.Text>
             <Typography.Text className="brand-subtitle">
-              {isRunning ? statusText || 'Working…' : 'Private page assistant'}
+              {isRunning
+                ? statusText || 'Working…'
+                : agentMode === 'ask'
+                  ? 'Read-only page assistant'
+                  : 'Private page assistant'}
             </Typography.Text>
             {localModelStatus && (
               <span className="nano-pill">Nano: {localModelStatus}</span>
@@ -208,6 +357,61 @@ export function ChatShell({
           </Button>
         )}
       </section>
+
+      <div className="agent-mode-bar">
+        <div className="agent-mode-switch" role="tablist" aria-label="Interaction mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={agentMode === 'agent'}
+            className={agentMode === 'agent' ? 'active' : ''}
+            onClick={() => onAgentModeChange('agent')}
+            title="Drishti can click, type and navigate, with policy checks and approval."
+          >
+            Agent
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={agentMode === 'ask'}
+            className={agentMode === 'ask' ? 'active' : ''}
+            onClick={() => onAgentModeChange('ask')}
+            title="Read-only conversation about the page. Nothing is clicked or typed."
+          >
+            Ask
+          </button>
+        </div>
+        <div className="effort-switch" role="group" aria-label="Reasoning effort">
+          <span className="effort-label">Power</span>
+          {(['fast', 'balanced', 'deep'] as AgentEffort[]).map((level) => (
+            <button
+              type="button"
+              key={level}
+              aria-pressed={effort === level}
+              className={effort === level ? 'active' : ''}
+              onClick={() => onEffortChange(level)}
+              title={
+                level === 'fast'
+                  ? 'Short run, no vision calls. Cheapest and quickest.'
+                  : level === 'deep'
+                    ? 'Longer run and more visual checks. Slowest, most thorough.'
+                    : 'Balanced loop with periodic redacted screenshots.'
+              }
+            >
+              {EFFORT_LABELS[level]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="error-banner" role="alert">
+          <span>{error}</span>
+          <button type="button" aria-label="Dismiss error" onClick={onDismissError}>
+            <CloseOutlined />
+          </button>
+        </div>
+      )}
 
       <SettingsDrawer
         onClose={() => setSettingsOpen(false)}
@@ -254,38 +458,57 @@ export function ChatShell({
       {activePanel === 'chat' && messages.length === 0 && !isRunning && (
         <section className="hero-copy" aria-label="Greeting">
           <Typography.Title level={1}>
-            <span>Case file, opened.</span>
-            What should Drishti look at?
+            <span>{agentMode === 'ask' ? 'Question, filed.' : 'Case file, opened.'}</span>
+            {agentMode === 'ask' ? 'What should Drishti read?' : 'What should Drishti do?'}
           </Typography.Title>
           <Typography.Paragraph>
-            Command the agent in plain words. Every line it reads is screened
-            on this machine before it reaches any model.
+            {agentMode === 'ask'
+              ? 'Ask about the page in plain words. Drishti reads and scrolls, but never clicks, types or submits in Ask mode.'
+              : 'Command the agent in plain words. Every line it reads is screened on this machine before it reaches any model.'}
           </Typography.Paragraph>
 
-          {/*
-            Quick actions, from the upstream design.
-            There they called dedicated DRISHTI_* extension messages. Here
-            they fill the composer instead: this agent takes plain English and
-            plans the scrolling and reading itself, so a shortcut only needs to
-            say what you want -- and you can edit it before sending, which the
-            fixed buttons could not.
-          */}
           <div className="quick-actions-list">
             <button
               type="button"
               className="quick-action-pill"
-              onClick={() => onTaskChange('Scroll through the whole page and give a complete summary')}
+              onClick={() => onTaskChange(
+                agentMode === 'ask'
+                  ? 'Summarize this page in plain language, with the most important facts first'
+                  : 'Scroll through the whole page and give a complete summary',
+              )}
             >
               <span className="qa-icon" aria-hidden="true">§</span>
-              <span className="qa-text">Full Page Scroll &amp; Summarize</span>
+              <span className="qa-text">
+                {agentMode === 'ask' ? 'Summarize This Page' : 'Full Page Scroll & Summarize'}
+              </span>
             </button>
             <button
               type="button"
               className="quick-action-pill"
-              onClick={() => onTaskChange('Scan and redact all sensitive PII on this page')}
+              onClick={() => onTaskChange(
+                agentMode === 'ask'
+                  ? 'What needs my attention on this page? List the important items and quote the evidence for each.'
+                  : 'Scan and redact all sensitive PII on this page',
+              )}
             >
-              <span className="qa-icon" aria-hidden="true">⊘</span>
-              <span className="qa-text">Scan &amp; Redact Sensitive PII</span>
+              <span className="qa-icon" aria-hidden="true">{agentMode === 'ask' ? '!' : '⊘'}</span>
+              <span className="qa-text">
+                {agentMode === 'ask' ? 'What Needs Attention?' : 'Scan & Redact Sensitive PII'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="quick-action-pill"
+              onClick={() => onTaskChange(
+                agentMode === 'ask'
+                  ? 'Find the key dates, amounts and deadlines on this page, with the exact text that states each one.'
+                  : 'Open the main form on this page and fill it from the context I provide',
+              )}
+            >
+              <span className="qa-icon" aria-hidden="true">{agentMode === 'ask' ? '⌕' : '▤'}</span>
+              <span className="qa-text">
+                {agentMode === 'ask' ? 'Find Dates & Amounts' : 'Work Through a Form'}
+              </span>
             </button>
           </div>
         </section>
@@ -523,7 +746,7 @@ export function ChatShell({
         )}
 
         <Input.TextArea
-          aria-label="Ask Drishti"
+          aria-label={agentMode === 'ask' ? 'Ask about this page' : 'Ask Drishti'}
           autoSize={{ minRows: 3, maxRows: 10 }}
           className={`composer-input${stt.status === 'listening' ? ' composer-input--listening' : ''}`}
           // A real task command carries a URL or two, the columns wanted and
@@ -537,7 +760,9 @@ export function ChatShell({
           placeholder={
             stt.status === 'listening'
               ? 'Bol do… Hindi, Hinglish ya English mein'
-              : 'Ask Drishti to inspect, explain, or guide...'
+              : agentMode === 'ask'
+                ? 'Ask about this page — Drishti reads, never acts…'
+                : 'Ask Drishti to inspect, explain, or act...'
           }
           value={stt.status === 'listening' && stt.interimText
             ? (task.trim() ? task.trim() + ' ' : '') + stt.interimText
@@ -546,8 +771,40 @@ export function ChatShell({
         />
         <div className="composer-actions">
           <div className="composer-tools">
-            <Button className="context-button" icon={<PlusOutlined />} shape="circle" type="text" aria-label="Add context" />
-
+            <div className="context-wrap" ref={contextRef}>
+              <Button
+                className={`context-button${contextOpen ? ' open' : ''}`}
+                icon={<PlusOutlined />}
+                shape="circle"
+                type="text"
+                aria-label="Add context"
+                aria-haspopup="menu"
+                aria-expanded={contextOpen}
+                onClick={() => setContextOpen((open) => !open)}
+              />
+              {contextOpen && (
+                <div className="context-popover" role="menu" aria-label="Add context">
+                  <div className="context-popover-head">Add context</div>
+                  <button type="button" role="menuitem" onClick={addCurrentPage}>
+                    <b>Current page</b>
+                    <span>title and URL</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={addSelection}>
+                    <b>Selected text</b>
+                    <span>the part you highlighted</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={pasteClipboard}>
+                    <b>Clipboard</b>
+                    <span>paste text to work from</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { onTaskChange(''); setContextOpen(false) }}>
+                    <b>Clear composer</b>
+                    <span>start this question fresh</span>
+                  </button>
+                  {contextNote && <p className="context-note" role="status">{contextNote}</p>}
+                </div>
+              )}
+            </div>
             {/* ---- Microphone button ---- */}
             <Tooltip
               title={
@@ -588,15 +845,21 @@ export function ChatShell({
               type="text"
             />
           </div>
-          <Select
-            aria-label="Privacy mode"
-            className="mode-select"
-            onChange={onModeChange}
-            options={modeOptions}
-            popupClassName="mode-dropdown"
-            value={mode}
-            variant="borderless"
-          />
+          <div className="privacy-control">
+            <span className="privacy-mark" title="Privacy mode: how aggressively page text is masked before it leaves the browser">
+              <LockOutlined />
+            </span>
+            <Select
+              aria-label="Privacy mode"
+              className="mode-select"
+              onChange={onModeChange}
+              options={modeOptions}
+              popupClassName="mode-dropdown"
+              title="How aggressively page text is masked before it leaves the browser"
+              value={mode}
+              variant="borderless"
+            />
+          </div>
           {isRunning ? (
             <Button className="stop-button" size="small" danger onClick={onCancel} aria-label="Stop the task">
               Stop
@@ -609,13 +872,13 @@ export function ChatShell({
               icon={<ArrowUpOutlined />}
               shape="circle"
               type="primary"
-              aria-label="Send"
+              aria-label={agentMode === 'ask' ? 'Ask' : 'Send'}
             />
           )}
         </div>
       </form>}
 
-      {activePanel === 'chat' && <label className="preapprove-row" title="Remembered across tasks. High-risk actions stay classified and logged either way — this only changes whether you answer up front or one at a time. Authentication codes always need you, live.">
+      {activePanel === 'chat' && agentMode === 'agent' && <label className="preapprove-row" title="Remembered across tasks. High-risk actions stay classified and logged either way — this only changes whether you answer up front or one at a time. Authentication codes always need you, live.">
         <input
           type="checkbox"
           checked={preApprove}

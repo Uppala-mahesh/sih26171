@@ -47,6 +47,7 @@
     "debugger",
     "downloads",
     "microphone",
+    "clipboardRead",
     "offscreen"
   ],
   "host_permissions": [

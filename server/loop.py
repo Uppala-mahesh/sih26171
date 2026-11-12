@@ -34,8 +34,31 @@ from .capability_gate import check as check_capability
 from .vault import mask, vault
 from .schemas import (
     BROWSER_VERBS, CONTROL_VERBS, ActionProposal, Observation, Plan,
-    TERMINAL_VERBS, now_iso,
+    PlanStep, TERMINAL_VERBS, now_iso,
 )
+
+
+# How much work the operator is willing to let one task do. "fast" keeps the
+# loop short and skips vision calls entirely; "deep" allows a longer run and
+# re-checks pixels more often. The privacy pipeline is identical in every
+# profile -- this changes effort, not the boundary.
+def _effort_profile(effort: str) -> Dict[str, Any]:
+    if effort == "fast":
+        return {"max_steps": 30, "wall_clock_s": 300.0,
+                "screenshot_every": 0, "vision": False}
+    if effort == "deep":
+        return {"max_steps": 90, "wall_clock_s": 900.0,
+                "screenshot_every": min(3, config.SCREENSHOT_EVERY), "vision": True}
+    return {"max_steps": config.MAX_STEPS, "wall_clock_s": config.WALL_CLOCK_S,
+            "screenshot_every": config.SCREENSHOT_EVERY, "vision": True}
+
+
+# Ask mode is a read-only conversation about the page. These are the only verbs
+# it may ever execute: reading, moving down the page, and finishing the answer.
+# Anything that could change the page is refused locally before policy/execute.
+ANSWER_ONLY_ACTIONS = frozenset({
+    "scroll", "wait", "extract", "note", "replan", "finish", "fail",
+})
 
 
 # Failures that will never succeed on a retry: a malformed action, or a page
@@ -123,9 +146,18 @@ class Task:
     """One running task. Owns its own FSM state and audit trail."""
 
     def __init__(self, command: str, pre_approved: bool = False,
-                 privacy_mode: str = "balanced") -> None:
+                 privacy_mode: str = "balanced", effort: str = "balanced",
+                 answer_only: bool = False) -> None:
         self.task_id = "task_" + uuid.uuid4().hex[:10]
         self.command = command
+        # "fast" / "balanced" / "deep" changes loop length and how often the
+        # visual path runs. It never weakens redaction: every profile goes
+        # through the same on-device privacy boundary.
+        self.effort = effort if effort in ("fast", "balanced", "deep") else "balanced"
+        self.effort_profile = _effort_profile(self.effort)
+        # Ask mode is a read-only conversation: the agent may read and scroll,
+        # but never click, type, submit, navigate or upload.
+        self.answer_only = bool(answer_only)
         # The operator may pre-authorise this one task's high-risk actions
         # before it starts. The policy layer still classifies every action and
         # still logs the decision -- what changes is only who answers, and the
@@ -193,6 +225,8 @@ class Task:
             "pending_confirmation": self._pending_confirmation,
             "last_screenshot": self.last_screenshot,
             "privacy_mode": self.privacy_mode,
+            "effort": self.effort,
+            "answer_only": self.answer_only,
         }
 
     # -- confirmation -------------------------------------------------------
@@ -230,7 +264,8 @@ class Task:
         """
         self._guard()
         if screenshot is None:
-            screenshot = self.step == 0 or self.step % config.SCREENSHOT_EVERY == 0
+            every = self.effort_profile["screenshot_every"]
+            screenshot = self.step == 0 or bool(every and self.step % every == 0)
         try:
             # Only meaningful (and only sent) alongside a screenshot -- it is
             # what the on-device CLIP pass scores candidate elements against.
@@ -455,13 +490,16 @@ class Task:
             #    the ladder's own local rung (Ollama + a small vision model)
             #    gets first look before anything leaves the device.
             if action is None:
-                shot = reasoner_obs.screenshot if config.VISION_REASONING_ENABLED else ""
+                shot = reasoner_obs.screenshot if (
+                    config.VISION_REASONING_ENABLED and self.effort_profile["vision"]
+                ) else ""
                 action = await reasoner.propose(
                     self.plan.objective if self.plan else self.command,
                     self.plan, reasoner_obs, self.history, self.task_id, self.step, self.extracted,
                     discovered=self.discovered, notes=self.notes,
                     dead_targets=self._dead_targets,
                     image_b64=shot or "",
+                    answer_only=self.answer_only,
                 )
                 action.perception_source = "vision-ladder" if shot else "cloud"
                 
@@ -758,6 +796,30 @@ class Task:
                 raise _Finished()
             self.error = action.params.error or action.reason
             raise RuntimeError(self.error)
+
+        # --- ASK MODE IS READ-ONLY ---
+        # The prompt tells the model this, but a prompt is not a security
+        # boundary. If it proposes anything that could change the page, refuse
+        # it locally and let the next step try a read-only action instead.
+        if self.answer_only and action.action not in ANSWER_ONLY_ACTIONS:
+            await bus.emit("POLICY_DENIED", {
+                "action": action.action,
+                "decision": {
+                    "decision": "BLOCK",
+                    "risk": "high",
+                    "reason": "Ask mode is read-only. Drishti may read and scroll "
+                              "the page, but it cannot click, type, submit or navigate.",
+                    "rules_fired": ["answer_only_read_only"],
+                },
+                "preview": redact_preview(action, obs),
+            }, task_id=self.task_id, step=self.step)
+            self.history.append({
+                "step": self.step,
+                "summary": "%s -> BLOCKED, Ask mode is read-only" % action.action,
+                "verdict": "rejected",
+                "detail": "only scroll/wait/extract/note/finish are allowed in Ask mode",
+            })
+            return None, None
 
         # --- ALREADY SENT? ---
         #
@@ -1472,8 +1534,10 @@ class Task:
 
     # -- the run ------------------------------------------------------------
     async def run(self) -> None:
-        await bus.emit("TASK_CREATED", {"command": self.command, "task_id": self.task_id},
-                       task_id=self.task_id, step=0)
+        await bus.emit("TASK_CREATED", {
+            "command": self.command, "task_id": self.task_id,
+            "effort": self.effort, "answer_only": self.answer_only,
+        }, task_id=self.task_id, step=0)
         try:
             # --- PLANNING ---
             await self.set_state("PLANNING")
@@ -1497,7 +1561,20 @@ class Task:
                 current_url = seed.url
             except BridgeError:
                 current_url = ""
-            self.plan = await planner.make_plan(self.command, self.task_id, current_url)
+            if self.answer_only:
+                # Ask mode is a conversation, not a workflow. One read-only
+                # objective, no planner call, no site navigation.
+                self.plan = Plan(
+                    objective=self.command,
+                    steps=[PlanStep(
+                        n=1,
+                        goal="Answer the question using only what is visible on the page",
+                        done_when="the answer is stated with evidence from the page",
+                    )],
+                    start_url=None,
+                )
+            else:
+                self.plan = await planner.make_plan(self.command, self.task_id, current_url)
 
             # "hello" is not a browser task. Answer it and stop -- before a plan
             # is announced, before a tab is opened, before anything is observed.
@@ -1524,11 +1601,12 @@ class Task:
 
             while True:
                 self._guard()
-                if self.step >= config.MAX_STEPS:
-                    raise RuntimeError("hit the %d step budget without finishing" % config.MAX_STEPS)
-                if time.monotonic() - self.started > config.WALL_CLOCK_S:
+                if self.step >= self.effort_profile["max_steps"]:
+                    raise RuntimeError("hit the %d step budget without finishing"
+                                       % self.effort_profile["max_steps"])
+                if time.monotonic() - self.started > self.effort_profile["wall_clock_s"]:
                     raise RuntimeError("hit the %.0fs wall-clock budget without finishing"
-                                       % config.WALL_CLOCK_S)
+                                       % self.effort_profile["wall_clock_s"])
 
                 if obs.page_state.login_wall is not None:
                     obs = await self.wait_for_login(obs)
@@ -1656,19 +1734,23 @@ class Registry:
         self.active_task_id: Optional[str] = None
 
     def create(self, command: str, pre_approved: bool = False,
-               privacy_mode: str = "balanced") -> Task:
-        task = Task(command, pre_approved=pre_approved, privacy_mode=privacy_mode)
+               privacy_mode: str = "balanced", effort: str = "balanced",
+               answer_only: bool = False) -> Task:
+        task = Task(command, pre_approved=pre_approved, privacy_mode=privacy_mode,
+                    effort=effort, answer_only=answer_only)
         self.tasks[task.task_id] = task
         return task
 
     async def start(self, command: str, pre_approved: bool = False,
-                    privacy_mode: str = "balanced") -> Task:
+                    privacy_mode: str = "balanced", effort: str = "balanced",
+                    answer_only: bool = False) -> Task:
         if self._running is not None and not self._running.done():
             raise RuntimeError(
                 "a task is already running (%s). Cancel it before starting another."
                 % self.active_task_id
             )
-        task = self.create(command, pre_approved=pre_approved, privacy_mode=privacy_mode)
+        task = self.create(command, pre_approved=pre_approved, privacy_mode=privacy_mode,
+                           effort=effort, answer_only=answer_only)
         self.active_task_id = task.task_id
         self._running = asyncio.create_task(task.run())
         return task

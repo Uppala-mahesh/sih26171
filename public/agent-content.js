@@ -2098,6 +2098,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'AGENT_SELECTION') {
+    // Popup "Selected text" context. Read-only and bounded: the operator can
+    // inspect the exact words in the composer before sending anything.
+    let text = ''
+    try {
+      text = String(window.getSelection() ? window.getSelection().toString() : '')
+    } catch (e) {
+      text = ''
+    }
+    sendResponse({ ok: true, text: text.slice(0, 2000), url: location.href })
+    return true
+  }
+
   if (message.type === 'AGENT_OBSERVE') {
     showScanOverlay()
     Promise.resolve()

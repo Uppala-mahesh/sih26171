@@ -476,6 +476,7 @@ async def propose(
     notes: Optional[List[str]] = None,
     dead_targets: Optional[Dict[str, str]] = None,
     image_b64: str = "",
+    answer_only: bool = False,
 ) -> ActionProposal:
     plan_text = "\n".join(
         "%d. %s (done when: %s)" % (s.n, s.goal, s.done_when or "n/a") for s in plan.steps
@@ -491,6 +492,18 @@ async def propose(
             "observation": _observation_digest(obs, tier, dead_targets),
             "budget": {"step": step, "note": "be efficient; do not loop"},
         }
+        if answer_only:
+            # The loop enforces this locally too; saying it here stops the model
+            # wasting a turn on an action that will only be refused.
+            payload["ASK_MODE"] = {
+                "mode": "read-only conversation about the page",
+                "allowed": ["scroll", "wait", "extract", "note", "finish", "fail"],
+                "forbidden": ["click", "type", "submit", "navigate", "open_tab",
+                              "switch_tab", "press_key", "select", "upload_file",
+                              "download", "paste_table"],
+                "instruction": "Answer the user's question from what you can read. "
+                               "Never change the page. Put the answer itself in finish.params.summary.",
+            }
         if discovered:
             # What the agent read for itself, and is now working towards.
             payload["the_real_request"] = discovered[:1200]

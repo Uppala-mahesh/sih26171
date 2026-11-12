@@ -371,7 +371,7 @@ Full engineering documentation lives in [`docs/`](docs/README.md):
 |---|---|
 | Anti-pretence gates | **14 / 14** |
 | JavaScript tests | **145 passed** |
-| Python tests | **240 passed** |
+| Python tests | **243 passed** |
 | Production build | clean |
 | ESLint | clean |
 

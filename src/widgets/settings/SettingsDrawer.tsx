@@ -129,7 +129,7 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
   return (
     <Drawer
       className="settings-drawer"
-      closeIcon={<span style={{ color: '#94a3b8' }}>✕</span>}
+      closeIcon={<span className="settings-close">✕</span>}
       onClose={onClose}
       open={open}
       placement="right"
@@ -161,7 +161,7 @@ export function SettingsDrawer({ open, onClose, onSettingsChanged }: SettingsDra
                 setHealth(null)
               }}
               placeholder="http://127.0.0.1:8787/health"
-              prefix={<ApiOutlined style={{ color: '#64748b' }} />}
+              prefix={<ApiOutlined style={{ color: 'var(--ink-faint)' }} />}
               value={settings.serverUrl}
             />
             <Button loading={testingServer} onClick={testServerConnection} type="default">

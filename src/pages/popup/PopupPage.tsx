@@ -10,6 +10,9 @@ export function PopupPage() {
       isRunning={agent.isRunning}
       messages={agent.messages}
       mode={agent.mode}
+      effort={agent.effort}
+      agentMode={agent.agentMode}
+      error={agent.error}
       statusText={agent.statusText}
       task={agent.task}
       maskedScreenshot={agent.maskedScreenshot}
@@ -30,6 +33,9 @@ export function PopupPage() {
       onDetach={agent.detach}
       isDetached={agent.isDetached}
       onModeChange={agent.setMode}
+      onEffortChange={agent.setEffort}
+      onAgentModeChange={agent.setAgentMode}
+      onDismissError={agent.dismissError}
       onSubmit={agent.runAgent}
       onTaskChange={agent.updateTask}
       localModelStatus={agent.localModelStatus}

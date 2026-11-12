@@ -141,6 +141,128 @@
   color: var(--ink) !important;
 }
 
+/* ---- mode rail: Agent (acts) vs Ask (read-only) + effort ----------------- */
+.agent-mode-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--sheet-deep);
+}
+
+.agent-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 0 0 132px;
+  border: 1px solid var(--ink);
+  background: var(--sheet);
+}
+
+.agent-mode-switch button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: 650 9.5px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.agent-mode-switch button + button {
+  border-left: 1px solid var(--line-soft);
+}
+
+.agent-mode-switch button.active {
+  background: var(--ink);
+  color: var(--sheet);
+}
+
+.agent-mode-switch button:not(.active):hover {
+  background: rgba(32, 36, 44, 0.07);
+  color: var(--ink);
+}
+
+.effort-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.effort-label {
+  margin-right: 3px;
+  color: var(--ink-faint);
+  font: 600 7.5px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.effort-switch button {
+  height: 23px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: 600 8.5px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.effort-switch button:hover {
+  border-color: var(--line-soft);
+  color: var(--ink);
+}
+
+.effort-switch button.active {
+  border-color: var(--ink);
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: 1px 1px 0 rgba(32, 36, 44, 0.18);
+}
+
+/* ---- error banner: a real failure must be visible, not swallowed ------- */
+.error-banner {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-height: 92px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--stamp);
+  background: #f3e3da;
+  color: #6f2b1d;
+  font: 500 9.5px/1.5 var(--font-mono);
+}
+
+.error-banner span {
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+.error-banner button {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(111, 43, 29, 0.45);
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.error-banner button:hover {
+  background: rgba(111, 43, 29, 0.12);
+}
+
 /* ---- tab rail: filed sections ------------------------------------------ */
 .panel-tabs {
   position: relative;
@@ -266,22 +388,23 @@
 
 .quick-actions-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-  margin-top: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 14px;
   flex: 1;
   align-items: stretch;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .quick-action-pill {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 5px;
   width: 100%;
-  min-height: 84px;
-  padding: 9px;
+  min-height: 72px;
+  padding: 8px;
   border: 1px solid var(--ink);
   border-radius: 2px;
   background: var(--sheet);
@@ -300,15 +423,15 @@
 .qa-icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border: 1px solid currentColor;
   border-radius: 2px;
-  font: 700 13px/1 var(--font-mono);
+  font: 700 11px/1 var(--font-mono);
 }
 
 .qa-text {
-  font-size: 10.5px;
+  font-size: 9px;
   font-weight: 650;
   line-height: 1.35;
 }
@@ -775,6 +898,70 @@
   gap: 3px;
 }
 
+.context-wrap {
+  position: relative;
+}
+
+.context-button.ant-btn.open {
+  background: var(--ink);
+  color: var(--sheet) !important;
+}
+
+.context-popover {
+  position: absolute;
+  bottom: 35px;
+  left: -4px;
+  z-index: 20;
+  width: 216px;
+  padding: 5px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  background: var(--sheet);
+  box-shadow: var(--shadow-docket);
+}
+
+.context-popover-head {
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--line-faint);
+  color: var(--ink-faint);
+  font: 650 7.5px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.context-popover button {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 1px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-popover button:hover {
+  background: rgba(32, 36, 44, 0.07);
+}
+
+.context-popover button b {
+  display: block;
+  font: 650 10px/1.35 var(--font-ui);
+}
+
+.context-popover button span {
+  display: block;
+  color: var(--ink-dim);
+  font: 400 8.5px/1.35 var(--font-mono);
+}
+
+.context-note {
+  margin: 4px 6px 2px;
+  color: var(--stamp);
+  font: 500 8px/1.4 var(--font-mono);
+}
+
 .context-button.ant-btn,
 .settings-button.ant-btn,
 .mic-button.ant-btn,
@@ -824,7 +1011,21 @@
 }
 
 .mode-select.ant-select {
-  width: 94px;
+  width: 112px;
+}
+
+.privacy-control {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.privacy-mark {
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  font-size: 10px;
+  cursor: help;
 }
 
 .mode-select .ant-select-selector {

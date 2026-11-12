@@ -8,7 +8,8 @@ def test_operational_observations_use_configured_visual_cadence():
     source = (ROOT / "server" / "loop.py").read_text(encoding="utf-8")
 
     assert "async def observe(self, screenshot: Optional[bool] = None)" in source
-    assert "self.step % config.SCREENSHOT_EVERY == 0" in source
+    assert 'every = self.effort_profile["screenshot_every"]' in source
+    assert "self.step % every == 0" in source
     assert "after = await self.observe()" in source
 
 

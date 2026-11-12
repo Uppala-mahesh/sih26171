@@ -225,7 +225,7 @@ State this openly. It is an honest and unusual engineering position.
 |---|---|
 | Automated gates | **14 / 14 passing** |
 | JavaScript tests | **145 passing** |
-| Python tests | **240 passing** |
+| Python tests | **243 passing** |
 | Production build | clean |
 | Distinct event types emitted | 31 |
 | On-device model weights packaged | **72 MB** — MobileCLIP-S0 54 MB, ONNX runtime 13 MB, Tesseract 5 MB |
