@@ -224,7 +224,7 @@ State this openly. It is an honest and unusual engineering position.
 | Measure | Value |
 |---|---|
 | Automated gates | **14 / 14 passing** |
-| JavaScript tests | **145 passing** |
+| JavaScript tests | **146 passing** |
 | Python tests | **243 passing** |
 | Production build | clean |
 | Distinct event types emitted | 31 |

@@ -46,6 +46,10 @@ For a deterministic job-application-only demonstration, open
 `http://127.0.0.1:8787/fixtures/job-application-demo` and ask Drishti to apply
 for the role using the saved browser profile.
 
+For the complete review-ready matrix - 13 automated capability cases, a manual
+demo script, real-world site scenarios and the safety negatives - see
+[DEMO-TESTCASES.md](DEMO-TESTCASES.md). Run it with `npm run demo`.
+
 In the privacy proof panel, verify that the name, email, and phone appear only
 as typed redaction markers in the exact model-input sample. The final **Submit
 Application** action remains subject to the normal human-confirmation policy
@@ -265,9 +269,10 @@ curl http://127.0.0.1:8787/tasks/<task_id>/audit   # the whole stream
 
 ```bash
 npm run gates      # G1-G14 anti-pretence gates (grep-enforced)
-npm test           # 138 JS tests (walker, redaction, keepalive, manifest)
-npm run test:py    # 194 Python tests (schema, policy, verifier, knowledge)
-npm run smoke      # end-to-end suite against the real browser
+npm test           # 146 JS tests (walker, redaction, keepalive, manifest)
+npm run test:py    # 243 Python tests (schema, policy, verifier, knowledge)
+npm run smoke      # six-case end-to-end smoke suite against the real browser
+npm run demo       # 13-case capability demonstration suite
 ```
 
 The gates are not honour-system:
@@ -370,7 +375,7 @@ Full engineering documentation lives in [`docs/`](docs/README.md):
 | Check | Result |
 |---|---|
 | Anti-pretence gates | **14 / 14** |
-| JavaScript tests | **145 passed** |
+| JavaScript tests | **146 passed** |
 | Python tests | **243 passed** |
 | Production build | clean |
 | ESLint | clean |

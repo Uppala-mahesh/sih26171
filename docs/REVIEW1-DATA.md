@@ -2,7 +2,7 @@
 
 > **How to use:** every number below was produced by running the system. Sections map
 > 1:1 to the Review-1 checklist. Nothing here is estimated or invented.
-> Verified 13 Nov 2026 · 14/14 gates · 145 JS tests · 243 Python tests · clean build
+> Verified 13 Nov 2026 · 14/14 gates · 146 JS tests · 243 Python tests · clean build
 
 ---
 
@@ -317,7 +317,7 @@ the live observation, so **the model cannot address an element that was not obse
 | HTTP client | httpx | 0.27 | Async provider calls |
 | Config | python-dotenv | 1.0 | `.env` loading |
 | PDF | pypdf | 4.0 | Chrome renders PDFs with no DOM text |
-| Testing | pytest · vitest | 3.11 / 5.x | 243 + 145 tests |
+| Testing | pytest · vitest | 3.11 / 5.x | 243 + 146 tests |
 | Gates | custom `check_gates.py` | — | 14 anti-pretence gates |
 
 **Reasoning providers (chain, first healthy wins):** Gemini → Groq → OpenRouter → OpenAI.
@@ -466,15 +466,16 @@ https://github.com/ethz-spylab/agentdojo
 
 ## 11. Quick demo script (for the Review-1 presentation)
 
-1. `npm run gates` → **14/14** · `npm test` → **145** · `npm run test:py` → **243**
-2. Cockpit at `http://127.0.0.1:8787/cockpit`
-3. Command: `open http://127.0.0.1:8787/fixtures/pii and tell me what private data is on this page`
-4. Point at the **Perception** panel → verdict + coverage meter
-5. Point at the **model-input sample** → typed markers only, no raw values
-6. Point at the **screenshot** → solid black boxes, not blur
-7. Run `/fixtures/payment` → **approval modal** appears before the irreversible action
-8. Run `/fixtures/prompt-injection-demo` → lure neutralised, OTP never pasted
-9. `GET /tasks/{id}/compliance-report?format=html` → DPDP report incl. its own stated gap
+1. `npm run gates` → **14/14** · `npm test` → **146** · `npm run test:py` → **243**
+2. Capability suite: `npm run demo` — 13 automated cases; matrix and manual script in [`DEMO-TESTCASES.md`](../DEMO-TESTCASES.md)
+3. Cockpit at `http://127.0.0.1:8787/cockpit`
+4. Command: `open http://127.0.0.1:8787/fixtures/pii and tell me what private data is on this page`
+5. Point at the **Perception** panel → verdict + coverage meter
+6. Point at the **model-input sample** → typed markers only, no raw values
+7. Point at the **screenshot** → solid black boxes, not blur
+8. Run `/fixtures/payment` → **approval modal** appears before the irreversible action
+9. Run `/fixtures/prompt-injection-demo` → lure neutralised, OTP never pasted
+10. `GET /tasks/{id}/compliance-report?format=html` → DPDP report incl. its own stated gap
 
 ---
 

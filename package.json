@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:py": "node scripts/run-py.mjs -m pytest server/tests -q",
     "smoke": "node scripts/run-py.mjs -m server.eval.run_smoke",
+    "demo": "node scripts/run-py.mjs -m server.eval.run_smoke --file server/eval/demo_tasks.json",
     "gates": "node scripts/run-py.mjs scripts/check_gates.py",
     "generate:icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",

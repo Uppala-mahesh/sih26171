@@ -13,7 +13,7 @@ show a zero.
 | Layer | Tool | Count | Scope |
 |---|---|---|---|
 | Gates | `scripts/check_gates.py` | 14 | Anti-pretence invariants over shipped source |
-| JavaScript | vitest | 145 | Content script, redaction, masking, manifest, storage |
+| JavaScript | vitest | 146 | Content script, redaction, masking, manifest, storage |
 | Python | pytest | 243 | Schemas, policy, verifier, knowledge, loop, config, compliance |
 | Smoke | `server/eval/run_smoke.py` | — | End-to-end against the real browser |
 | Live | manual | — | Real logged-in sites |
@@ -89,7 +89,7 @@ that it renders only events that arrived.
 ## 6. Manual verification before any demo
 
 1. `npm run gates` → 14/14
-2. `npm test` → 145
+2. `npm test` → 146
 3. `npm run test:py` → 243
 4. `npm run build` → clean
 5. `npm run server`, load `dist/` unpacked

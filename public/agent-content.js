@@ -113,7 +113,11 @@ const STRICTER_PATTERNS = [
   // while protecting nothing. Only redact a date that is announced as a birth
   // date.
   { type: 'DOB', regex: /\b(?:dob|d\.?o\.?b|date of birth|born(?: on)?|birth\s*date)\b[:\s-]*\d{1,2}[/\-.]\d{1,2}[/\-.](?:19|20)?\d{2}\b/gi, from: 'balanced' },
-  { type: 'ADDRESS', regex: /\b\d{1,4}[,\s]+[A-Za-z][A-Za-z\s]{3,30}(?:Road|Rd|Street|St|Lane|Nagar|Colony|Sector|Block)\b/gi, from: 'balanced' },
+  // Addresses stay on one line. The old separator class included newlines, so
+  // "1,799\nTASK DATA\nAccount password" matched as an address and the order
+  // total arrived at the model as "1,[REDACTED:ADDRESS_01]". Prices are task
+  // data; a redaction rule must not eat the answer it sits next to.
+  { type: 'ADDRESS', regex: /(?<![\d,])\b\d{1,4}[,\t ]+[A-Za-z][A-Za-z \t]{3,30}(?:Road|Rd|Street|St|Lane|Nagar|Colony|Sector|Block)\b/gi, from: 'balanced' },
   // A person's name is a FULL name: two or more capitalised words in a row.
   //
   // The old pattern was a single capitalised word of three letters or more,

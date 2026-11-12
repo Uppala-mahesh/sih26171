@@ -70,6 +70,12 @@ describe('PII redaction patterns actually shipped in agent-content.js', () => {
     expect(out).toContain('24.99')
   })
 
+  it('does not let an address rule cross a newline and eat the order total', () => {
+    const out = redact('Order total \u20b91,799\nTASK DATA\nAccount password')
+    expect(out).toContain('1,799')
+    expect(out).not.toContain('[REDACTED:ADDRESS')
+  })
+
   it('does not redact ordinary product text', () => {
     const text = 'Strider Lite Mens Running Shoes 4.2 out of 5'
     expect(redact(text)).toBe(text)
