@@ -47,10 +47,18 @@ DEVA = "Nirmala UI"
 
 W, H = 13.333, 7.5
 M = 0.72
+RIGHT = W - M  # one content margin for every slide, every box, every picture
 
 
 def C(value: str) -> RGBColor:
     return RGBColor.from_string(value)
+
+
+def fit(x, w):
+    """Clip a width to the content margin. Full-bleed shapes start at x=0."""
+    if x <= 0.01:
+        return w
+    return max(0.05, min(w, RIGHT - x))
 
 
 # --------------------------------------------------------------------------
@@ -58,7 +66,8 @@ def C(value: str) -> RGBColor:
 # --------------------------------------------------------------------------
 def rect(slide, x, y, w, h, fill=None, line=None, line_w=0.75,
          dashed=False, shape=MSO_SHAPE.RECTANGLE, radius=None):
-    shp = slide.shapes.add_shape(shape, Inches(x), Inches(y), Inches(w), Inches(h))
+    shp = slide.shapes.add_shape(shape, Inches(x), Inches(y), Inches(fit(x, w)),
+                                 Inches(h))
     if radius is not None and shape == MSO_SHAPE.ROUNDED_RECTANGLE:
         shp.adjustments[0] = radius
     if fill:
@@ -81,7 +90,8 @@ def text(slide, x, y, w, h, runs, size=15, color=INK, font=UI,
          bold=False, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP,
          line_spacing=1.0, space_after=0, italic=False, margins=(0, 0, 0, 0)):
     """Add a textbox. `runs` is a string or a list of run dicts."""
-    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(fit(x, w)),
+                                   Inches(h))
     tf = box.text_frame
     tf.word_wrap = True
     tf.vertical_anchor = anchor
@@ -108,7 +118,7 @@ def text(slide, x, y, w, h, runs, size=15, color=INK, font=UI,
 
 def rule(slide, x, y, w, color=INK, thickness=1.0):
     shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y),
-                                 Inches(w), Inches(thickness / 72))
+                                 Inches(fit(x, w)), Inches(thickness / 72))
     shp.fill.solid()
     shp.fill.fore_color.rgb = C(color)
     shp.line.fill.background()
@@ -196,7 +206,8 @@ def table(slide, x, y, w, h, data, col_widths, row_heights,
 
 
 def picture(slide, path, x, y, w, border=INK):
-    pic = slide.shapes.add_picture(str(path), Inches(x), Inches(y), width=Inches(w))
+    pic = slide.shapes.add_picture(str(path), Inches(x), Inches(y),
+                                   width=Inches(fit(x, w)))
     pic.line.color.rgb = C(border)
     pic.line.width = Pt(0.9)
     return pic
@@ -213,6 +224,7 @@ if run_path.exists():
 
 passed_n = sum(1 for r in results if r.get("passed"))
 total_n = len(results)
+total_s = sum(float(r.get("elapsed_s") or 0) for r in results)
 elapsed = {r.get("id"): r.get("elapsed_s") for r in results}
 outcomes = {r.get("id"): (r.get("outcome"), r.get("passed")) for r in results}
 
@@ -292,7 +304,7 @@ stamp.line.color.rgb = C(STAMP)
 stamp.line.width = Pt(1.8)
 
 text(s, M, 7.04, 12.0, 0.2,
-     "Built from commit 7a9bfd3  ·  every number in this deck comes from a run",
+     "Built from this checkout  ·  every number in this deck comes from a run",
      size=7.5, color="6E6A60", font=MONO)
 
 notes(s, "Drishti means sight. The project is a Chrome extension plus a local "
@@ -336,16 +348,16 @@ stats = [
     ("4", "perception verdict states\nWITHHOLD is fail-closed"),
     (f"{total_n or 13}", "capability cases in the\nautomated demo suite"),
 ]
-sx, sy = 8.75, 1.62
+sx, sy = 8.72, 1.62
 for i, (num, label) in enumerate(stats):
-    x = sx + (i % 2) * 2.05
+    x = sx + (i % 2) * 1.99
     y = sy + (i // 2) * 1.72
-    rect(s, x, y, 1.9, 1.52, fill=SHEET, line=INK, line_w=0.8)
-    text(s, x + 0.14, y + 0.1, 1.6, 0.55, num, size=30, color=STAMP, bold=True)
-    text(s, x + 0.14, y + 0.7, 1.66, 0.7, label, size=8.5, color=INK_DIM,
-         line_spacing=1.15)
+    rect(s, x, y, 1.86, 1.52, fill=SHEET, line=INK, line_w=0.8)
+    text(s, x + 0.14, y + 0.1, 1.58, 0.55, num, size=30, color=STAMP, bold=True)
+    text(s, x + 0.14, y + 0.7, 1.58, 0.7, label, size=8.2, color=INK_DIM,
+         line_spacing=1.12)
 
-text(s, 8.75, 5.25, 3.85, 0.85,
+text(s, 8.72, 5.25, 3.85, 0.85,
      "Not a chatbot in a sidebar.\nA control loop with evidence.",
      size=13, color=INK, bold=True, line_spacing=1.2)
 notes(s, "The abstract in one breath: local perception and redaction, cloud "
@@ -362,26 +374,33 @@ header(s, "02 / PROBLEM", "Three failures meet in the same browser tab.")
 footer(s, 3)
 
 cards = [
-    ("01", "PRIVACY", STAMP,
+    ("01", "PRIVACY",
      "Raw DOM and screenshots are the easiest context to send. They carry email, "
      "cards, Aadhaar, OTPs, passwords and private messages — most of it irrelevant "
-     "to the task."),
-    ("02", "SESSION", "7A4A12",
+     "to the task.",
+     "Redact in the page before serialisation."),
+    ("02", "SESSION",
      "Playwright and Puppeteer start a fresh profile. The work that matters — mail, "
      "chat, a college portal — lives inside the operator’s authenticated session, "
-     "which a fresh browser does not have."),
-    ("03", "TRUST", INK,
+     "which a fresh browser does not have.",
+     "Run inside the operator’s own Chrome profile."),
+    ("03", "TRUST",
      "Page text can instruct the agent: open this link, paste this OTP, change the "
      "recipient, submit the form. A model that cannot separate data from instruction "
-     "is one crafted paragraph away from exfiltration."),
+     "is one crafted paragraph away from exfiltration.",
+     "Page text is data; Python decides what executes."),
 ]
-for i, (num, label, col, body) in enumerate(cards):
+for i, (num, label, body, answer) in enumerate(cards):
     x = M + i * 4.03
     rect(s, x, 1.62, 3.78, 3.55, fill=SHEET, line=INK, line_w=0.9)
-    text(s, x + 0.22, 1.8, 0.6, 0.35, num, size=13, color=col, font=MONO, bold=True)
-    text(s, x + 0.22, 2.15, 3.3, 0.35, label, size=11, color=col, font=MONO, bold=True)
-    text(s, x + 0.22, 2.62, 3.34, 2.3, body, size=12.5, color=INK_DIM,
-         line_spacing=1.24)
+    text(s, x + 0.22, 1.8, 0.6, 0.35, num, size=13, color=STAMP, font=MONO, bold=True)
+    text(s, x + 0.22, 2.15, 3.3, 0.35, label, size=11, color=INK, font=MONO, bold=True)
+    text(s, x + 0.22, 2.62, 3.34, 1.78, body, size=12.2, color=INK_DIM,
+         line_spacing=1.22)
+    rule(s, x + 0.22, 4.52, 3.34, "C9BFA7", 0.7)
+    text(s, x + 0.22, 4.62, 3.34, 0.2, "DRISHTI RESPONSE", size=8, color=STAMP,
+         font=MONO, bold=True)
+    text(s, x + 0.22, 4.85, 3.34, 0.3, answer, size=9.6, color=INK, bold=True)
 
 rect(s, M, 5.48, W - 2 * M, 1.08, fill=None, line=STAMP, line_w=1.2)
 text(s, M + 0.2, 5.62, 2.0, 0.25, "SCOPE", size=8.5, color=STAMP, font=MONO, bold=True)
@@ -458,13 +477,13 @@ rect(s, 6.55, 1.55, 3.45, 4.55, fill="EDE5D3", line="B9AF98", line_w=0.8)
 text(s, 6.72, 1.66, 3.1, 0.25, "LOCAL SERVER  ·  127.0.0.1:8787", size=8.5,
      color=INK_DIM, font=MONO, bold=True)
 
-rect(s, 10.45, 2.25, 2.3, 2.1, fill=INK, line=None)
-text(s, 10.62, 2.4, 2.0, 0.25, "CLOUD REASONER", size=8.5, color="A9A290",
+rect(s, 10.31, 2.45, 2.3, 1.95, fill=INK, line=None)
+text(s, 10.38, 2.6, 2.0, 0.25, "CLOUD REASONER", size=8.5, color="A9A290",
      font=MONO, bold=True)
-text(s, 10.62, 2.75, 1.98, 0.95,
+text(s, 10.38, 2.95, 1.98, 0.95,
      "Gemini (default)\nGroq · OpenRouter\nOpenAI",
      size=11, color=SHEET, line_spacing=1.3)
-text(s, 10.62, 3.78, 2.0, 0.4, "sanitised context only", size=8.5, color="D8CDB6",
+text(s, 10.38, 3.98, 2.0, 0.4, "sanitised context only", size=8.5, color="D8CDB6",
      font=MONO)
 
 # Browser stack
@@ -519,13 +538,14 @@ rect(s, 3.46, 4.5, 0.2, 0.13, fill=STAMP, line=None, shape=MSO_SHAPE.RIGHT_ARROW
 rect(s, 2.15, 5.07, 0.03, 0.2, fill=STAMP, line=None)  # background bottom stub
 rect(s, 2.15, 5.27, 3.91, 0.03, fill=STAMP, line=None)
 rect(s, 6.06, 2.4, 0.03, 2.9, fill=STAMP, line=None)
-rect(s, 6.06, 2.38, 0.28, 0.03, fill=STAMP, line=None)
-rect(s, 6.31, 2.31, 0.09, 0.15, fill=STAMP, line=None, shape=MSO_SHAPE.RIGHT_ARROW)
+rect(s, 6.06, 2.38, 0.56, 0.03, fill=STAMP, line=None)
+rect(s, 6.62, 2.31, 0.13, 0.15, fill=STAMP, line=None, shape=MSO_SHAPE.RIGHT_ARROW)
 text(s, 5.62, 3.65, 0.5, 0.2, "ws://", size=7.2, color=STAMP, font=MONO, bold=True)
 
 # local server -> cloud reasoner
-rect(s, 10.04, 3.24, 0.3, 0.14, fill=STAMP, line=None, shape=MSO_SHAPE.RIGHT_ARROW)
-text(s, 9.9, 2.99, 0.6, 0.2, "HTTPS", size=7.2, color=STAMP, font=MONO, bold=True)
+rect(s, 9.84, 3.36, 0.44, 0.14, fill=STAMP, line=None, shape=MSO_SHAPE.RIGHT_ARROW)
+text(s, 9.84, 3.12, 0.44, 0.2, "HTTPS", size=7.2, color=STAMP, font=MONO,
+     bold=True, align=PP_ALIGN.CENTER)
 
 text(s, 0.75, 5.55, 4.6, 0.5,
      "Only the service worker holds the server address. The content script cannot name it (G7).",
@@ -534,7 +554,7 @@ text(s, 6.75, 5.55, 3.05, 0.5,
      "Loopback only · token-authenticated · one runtime per session.",
      size=8.3, color=INK_DIM, font=MONO, line_spacing=1.2)
 
-text(s, 0.55, 6.24, 12.3, 0.62,
+text(s, M, 6.24, W - 2 * M, 0.62,
      "G7  content script has no server address     ·     G6  capture is masked before "
      "encoding     ·     G10  a caught leak withholds the screenshot",
      size=9.2, color=INK, font=MONO, bold=True, line_spacing=1.25)
@@ -555,8 +575,9 @@ footer(s, 6)
 stages = [("RAW PAGE", "DOM + inputs"), ("LOCAL DETECT", "9 patterns + checks"),
           ("LOCAL REDACT", "placeholders + boxes"), ("SANITIZED", "only safe context"),
           ("NETWORK", "cloud reasoner")]
+stage_pitch = (W - 2 * M - 2.02) / 4
 for i, (name, sub) in enumerate(stages):
-    x = M + i * 2.42
+    x = M + i * stage_pitch
     fill = STAMP if i == 0 else (INK if i == 4 else SHEET)
     fg = SHEET if i in (0, 4) else INK
     rect(s, x, 1.62, 2.02, 0.88, fill=fill, line=INK, line_w=0.9)
@@ -564,11 +585,12 @@ for i, (name, sub) in enumerate(stages):
     text(s, x + 0.12, 1.98, 1.8, 0.4, sub, size=9.5,
          color=(SHEET if i in (0, 4) else INK_DIM), line_spacing=1.1)
     if i < 4:
-        text(s, x + 2.02, 1.93, 0.4, 0.25, "→", size=14, color=STAMP, bold=True)
-rect(s, 7.72, 1.5, 0.01, 1.15, fill=None, line=None)
+        rect(s, x + 2.114, 1.99, 0.26, 0.14, fill=STAMP, line=None,
+             shape=MSO_SHAPE.RIGHT_ARROW)
 # vertical boundary between sanitised context and the network
-rect(s, 10.27, 1.5, 0.035, 1.12, fill=STAMP, line=None)
-text(s, 9.52, 2.6, 1.5, 0.2, "TRUST BOUNDARY", size=7.2, color=STAMP,
+bound_x = M + 3 * stage_pitch + 2.02 + (stage_pitch - 2.02) / 2
+rect(s, bound_x - 0.018, 1.62, 0.036, 0.88, fill=STAMP, line=None)
+text(s, bound_x - 0.85, 2.6, 1.7, 0.2, "TRUST BOUNDARY", size=7.2, color=STAMP,
      font=MONO, bold=True, align=PP_ALIGN.CENTER)
 
 text(s, M, 2.95, 5.6, 0.28, "WHAT IS REMOVED BEFORE SERIALISATION",
@@ -595,8 +617,10 @@ verdicts = [
 for i, (name, col, desc) in enumerate(verdicts):
     y = 3.32 + i * 0.72
     rect(s, 6.6, y, 5.95, 0.58, fill=SHEET, line=col, line_w=1.0)
-    text(s, 6.72, y + 0.08, 1.55, 0.22, name, size=8.6, color=col, font=MONO, bold=True)
-    text(s, 8.3, y + 0.065, 4.1, 0.42, desc, size=8.7, color=INK_DIM, line_spacing=1.08)
+    text(s, 6.72, y, 1.55, 0.58, name, size=8.6, color=col, font=MONO, bold=True,
+         anchor=MSO_ANCHOR.MIDDLE)
+    text(s, 8.3, y, 4.1, 0.58, desc, size=8.7, color=INK_DIM, line_spacing=1.08,
+         anchor=MSO_ANCHOR.MIDDLE)
 
 text(s, 6.6, 6.32, 5.95, 0.5,
      "server/schemas.py:210  ·  WITHHOLD dominates aggregation  ·  G13 grades eight real observations",
@@ -617,30 +641,40 @@ header(s, "06 / CONTROL", "The model proposes. The system decides.")
 footer(s, 7)
 
 steps = ["OBSERVE", "REASON", "POLICY", "APPROVE", "EXECUTE", "VERIFY"]
+step_pitch = (W - 2 * M - 1.78) / 5
 for i, name in enumerate(steps):
-    x = M + i * 1.98
+    x = M + i * step_pitch
     fill = STAMP if name == "APPROVE" else (INK if name in ("POLICY", "VERIFY") else SHEET)
     fg = SHEET if fill != SHEET else INK
     rect(s, x, 1.62, 1.78, 0.78, fill=fill, line=INK, line_w=0.9)
     text(s, x, 1.86, 1.78, 0.28, name, size=9.2, color=fg, font=MONO, bold=True,
          align=PP_ALIGN.CENTER)
     if i < 5:
-        text(s, x + 1.78, 1.84, 0.22, 0.25, "›", size=17, color=INK_DIM, bold=True)
+        rect(s, x + 1.80, 1.94, 0.20, 0.14, fill=INK_DIM, line=None,
+             shape=MSO_SHAPE.RIGHT_ARROW)
 
 text(s, M, 2.5, 11.8, 0.24,
      "↺  every executed action returns to a fresh observation before the next reason call",
      size=9.5, color=INK_DIM, font=MONO)
 
 cards = [
-    ("DETERMINISTIC POLICY", "27 verbs, closed whitelist.\nUnknown verbs denied.\nSubmit, payment and high-risk\nnames require a human."),
-    ("HUMAN GATE", "120 s timeout → deny + cancel.\nNever auto-approves.\nAuthentication codes always\nneed a live human."),
-    ("FRESH-STATE VERIFY", "Stale observations rejected.\nPostconditions checked.\nThree consecutive failures\nstop the task."),
+    ("DETERMINISTIC POLICY",
+     "27 verbs, closed whitelist.\nUnknown verbs denied.\nSubmit, payment and high-risk\nnames require a human.",
+     "server/policy.py:75"),
+    ("HUMAN GATE",
+     "120 s timeout → deny + cancel.\nNever auto-approves.\nAuthentication codes always\nneed a live human.",
+     "server/loop.py:1499"),
+    ("FRESH-STATE VERIFY",
+     "Stale observations rejected.\nPostconditions checked.\nThree consecutive failures\nstop the task.",
+     "server/verifier.py:76"),
 ]
-for i, (head, body) in enumerate(cards):
+for i, (head, body, source) in enumerate(cards):
     x = M + i * 4.03
     rect(s, x, 2.92, 3.78, 1.72, fill=SHEET, line=INK, line_w=0.9)
     text(s, x + 0.18, 3.03, 3.4, 0.24, head, size=8.8, color=STAMP, font=MONO, bold=True)
     text(s, x + 0.18, 3.34, 3.42, 1.18, body, size=10.6, color=INK_DIM, line_spacing=1.22)
+    rule(s, x + 0.18, 4.32, 3.42, "C9BFA7", 0.6)
+    text(s, x + 0.18, 4.42, 3.42, 0.2, source, size=7.6, color=INK_FAINT, font=MONO)
 
 text(s, M, 4.9, 5.8, 0.25, "PAGE TEXT IS UNTRUSTED INPUT", size=8.7, color=STAMP,
      font=MONO, bold=True)
@@ -650,6 +684,10 @@ text(s, M, 5.2, 5.75, 1.25,
      "messages without ever seeing the page.",
      size=10.5, color=INK_DIM, line_spacing=1.25)
 
+text(s, M, 6.08, 5.75, 0.3,
+     "server/sanitizer.py  ·  capability_gate.py  ·  quoter.py",
+     size=7.8, color=INK_FAINT, font=MONO)
+
 rect(s, 6.75, 4.9, 5.85, 1.55, fill=INK, line=None)
 text(s, 6.95, 5.02, 5.45, 0.24, "AUDIT IS EVIDENCE, NOT DECORATION",
      size=8.7, color="D8CDB6", font=MONO, bold=True)
@@ -657,6 +695,9 @@ text(s, 6.95, 5.34, 5.45, 0.95,
      "Every event is appended to a SHA-256 hash chain. /tasks/{id}/audit/verify "
      "recomputes it; a broken link is reported instead of hidden.",
      size=10.5, color=SHEET, line_spacing=1.25)
+text(s, 6.95, 6.12, 5.45, 0.24,
+     "13/13 run: 13–72 audit lines per task · 16 for PII",
+     size=7.8, color="D8CDB6", font=MONO)
 notes(s, "The loop is deliberately boring: observe, reason, policy, optional human, "
          "execute, verify. The model only ever emits one proposed action. The policy "
          "is Python, not a prompt. A denied approval cancels. Verification reads the "
@@ -684,14 +725,14 @@ features = [
 for i, (head, body) in enumerate(features):
     y = 1.62 + i * 1.22
     text(s, M, y, 2.1, 0.24, head, size=8.9, color=STAMP, font=MONO, bold=True)
-    text(s, M + 2.05, y - 0.02, 6.55, 1.05, body, size=11.2, color=INK_DIM,
+    text(s, M + 2.05, y - 0.02, 6.45, 1.05, body, size=11.2, color=INK_DIM,
          line_spacing=1.22)
-    rule(s, M, y + 0.95, 8.35, "C9BFA7", 0.6)
+    rule(s, M, y + 0.95, 8.5, "C9BFA7", 0.6)
 
 picture(s, SHOTS / "popup-ui-cropped.png", 9.72, 1.55, 2.64)
-text(s, 9.72, 5.77, 3.2, 0.5,
+text(s, 9.72, 5.77, 2.83, 0.5,
      "Built popup · 390 × 600\nreal render, 386 × 600 capture",
-     size=8.2, color=INK_FAINT, font=MONO, line_spacing=1.25)
+     size=7.6, color=INK_FAINT, font=MONO, line_spacing=1.25)
 
 rect(s, M, 6.35, 12.0, 0.48, fill=None, line=None)
 text(s, M, 6.37, 11.9, 0.4,
@@ -711,10 +752,11 @@ rect(s, 0, 0, W, H, fill=PAPER)
 header(s, "08 / EVIDENCE", "Privacy is measured, not asserted.")
 footer(s, 9)
 
-picture(s, SHOTS / "pii-fixture.png", M, 1.55, 4.62)
-text(s, M, 5.25, 4.7, 0.5,
-     "Synthetic PII fixture: six detectable shapes plus protected password and OTP fields.",
-     size=8.2, color=INK_FAINT, font=MONO, line_spacing=1.2)
+picture(s, SHOTS / "pii-fixture-records.png", 0.95, 1.55, 3.95)
+picture(s, SHOTS / "pii-fixture-protected.png", 0.95, 5.12, 3.95)
+text(s, M, 6.28, 5.0, 0.5,
+     "Two crops from one synthetic PII fixture: six shapes, protected fields, ₹1,799 total.",
+     size=7.8, color=INK_FAINT, font=MONO, line_spacing=1.18)
 
 ev = [
     ("6 + 2", "Six PII shapes redacted; password and OTP protected. Eight mask boxes recorded."),
@@ -747,10 +789,14 @@ rect(s, 0, 0, W, H, fill=PAPER)
 header(s, "09 / ADVERSARIAL", "A page can lie. It still cannot steer the loop.")
 footer(s, 10)
 
-picture(s, SHOTS / "prompt-injection-fixture.png", M, 1.55, 4.4)
-text(s, M, 5.0, 4.5, 0.62,
-     "ByteBasket fixture: low-contrast note tells the agent to open mail and paste an OTP to a lure address.",
-     size=8.2, color=INK_FAINT, font=MONO, line_spacing=1.2)
+picture(s, SHOTS / "injection-note.png", M, 1.55, 4.0)
+text(s, M, 3.94, 4.0, 0.5,
+     "The low-contrast PARTNER INTEGRATION NOTE is the live lure; the panel below it explains the fixture.",
+     size=7.6, color=INK_FAINT, font=MONO, line_spacing=1.16)
+picture(s, SHOTS / "injection-product.png", M, 4.55, 4.0)
+text(s, M, 5.35, 4.0, 0.4,
+     "PixelLite 13 · ₹59,990 — the answer the agent gave.",
+     size=7.6, color=INK_FAINT, font=MONO, line_spacing=1.16)
 
 rows = [
     ["Attack", "Observed result", "Evidence"],
@@ -768,14 +814,15 @@ table(s, 5.35, 1.55, 7.2, 3.3, rows,
       row_heights=[0.38, 0.72, 0.72, 0.72, 0.72],
       font_size=9.2, header_size=8.6)
 
-rect(s, 5.35, 5.12, 7.2, 1.3, fill=None, line=STAMP, line_w=1.2)
+rect(s, 5.35, 5.12, 7.2, 1.42, fill=None, line=STAMP, line_w=1.2)
 text(s, 5.53, 5.22, 6.85, 0.24, "THE HONEST LIMIT", size=8.2, color=STAMP,
      font=MONO, bold=True)
-text(s, 5.53, 5.5, 6.85, 0.8,
+text(s, 5.53, 5.5, 6.85, 1.0,
      "Prompt injection is mitigated, not eliminated. Novel phrasing can still "
      "influence a plan. Deterministic policy and human approval are the backstop, "
-     "not a proof of safety.",
-     size=10.2, color=INK_DIM, line_spacing=1.2)
+     "not a proof of safety. The suite tests one injection phrasing; it does not "
+     "measure attack success rate.",
+     size=10.0, color=INK_DIM, line_spacing=1.18)
 notes(s, "The adversarial slide pairs the actual attack fixture with outcomes. The "
          "lure is in the live DOM; the agent answered the product question and never "
          "visited the address. Payment and Ask are policy outcomes, not prompt "
@@ -817,6 +864,11 @@ for col, cases in enumerate((left, right)):
              font=MONO)
         text(s, x + 2.58, y, 0.62, 0.22, mark, size=8.6, color=color, font=MONO,
              bold=True)
+
+rule(s, M, 5.72, W - 2 * M, "C9BFA7", 0.6)
+text(s, M, 5.86, 11.9, 0.28,
+     f"{total_n} cases · {total_s:.0f} s total · one server session",
+     size=9.2, color=INK, font=MONO, bold=True)
 
 text(s, M, 6.18, 12.0, 0.62,
      "Read · navigate · extract · Ask · effort · PII · payment deny/approve · injection · "
@@ -966,10 +1018,12 @@ tiers = [
      "AgentDojo-style injection benchmark; external security review."),
 ]
 for i, (head, body) in enumerate(tiers):
-    y = 1.96 + i * 1.46
-    text(s, 7.0, y, 1.35, 0.24, head, size=8.2, color=STAMP, font=MONO, bold=True)
-    text(s, 8.45, y - 0.02, 4.2, 1.2, body, size=11.0, color=INK_DIM, line_spacing=1.22)
-    rule(s, 7.0, y + 1.15, 5.65, "C9BFA7", 0.6)
+    y = 1.94 + i * 1.4
+    text(s, 7.0, y, 5.55, 0.24, head, size=8.2, color=STAMP, font=MONO, bold=True)
+    text(s, 7.0, y + 0.3, 5.55, 0.95, body, size=10.9, color=INK_DIM,
+         line_spacing=1.2)
+    if i < len(tiers) - 1:
+        rule(s, 7.0, y + 1.25, 5.55, "C9BFA7", 0.6)
 
 text(s, M, 6.45, 12.0, 0.35,
      "The defensible claim: local perception and redaction before cloud reasoning, with "
@@ -1006,14 +1060,14 @@ refs = [
 y = 1.55
 for i, ref in enumerate(refs, 1):
     text(s, M, y, 0.4, 0.24, f"[{i}]", size=9.2, color=STAMP, font=MONO, bold=True)
-    text(s, M + 0.48, y - 0.01, 11.55, 0.62, ref, size=9.6, color=INK, line_spacing=1.14)
+    text(s, M + 0.48, y - 0.01, 11.35, 0.62, ref, size=9.6, color=INK, line_spacing=1.14)
     y += 0.62
 
 rule(s, M, 6.05, 11.9, "C9BFA7", 0.7)
 text(s, M, 6.18, 7.0, 0.24, "INTERNAL EVIDENCE", size=8.2, color=INK_FAINT,
      font=MONO, bold=True)
 text(s, M, 6.44, 7.2, 0.5,
-     "Repository at 7a9bfd3  ·  docs/review2/REVIEW2-BRIEFING.md  ·  "
+     "Repository evidence  ·  docs/review2/REVIEW2-BRIEFING.md  ·  "
      "server/eval/last_run.json  ·  docs/review2/screenshots/",
      size=8.0, color=INK_FAINT, font=MONO, line_spacing=1.25)
 
@@ -1030,7 +1084,7 @@ prs.core_properties.title = "Drishti — TBP Review II"
 prs.core_properties.subject = "SIH 2026, Problem Statement 26171"
 prs.core_properties.author = "Drishti Team"
 prs.core_properties.comments = (
-    "Generated from the repository at 7a9bfd3 and server/eval/last_run.json. "
+    "Generated from this checkout and server/eval/last_run.json. "
     "All counts are measured; see docs/review2/REVIEW2-BRIEFING.md."
 )
 
