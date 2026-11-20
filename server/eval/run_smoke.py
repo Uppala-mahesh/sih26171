@@ -203,6 +203,20 @@ async def run_task(spec: Dict[str, Any]) -> Dict[str, Any]:
                     m.model_latency_ms.append(p["latency_ms"])
             elif t == "LOGIN_REQUIRED":
                 m.login_waits += 1
+                # The login-wall demo exists to prove detection, not to sign in
+                # with guessed credentials. Waiting for the full login timeout
+                # would make the suite look hung; cancel once the wall is
+                # observed and let TASK_CANCELLED be the terminal state.
+                gates = (
+                    (spec.get("success", {}).get("requires_events") or [])
+                    + (spec.get("success", {}).get("requires_events_any") or [])
+                )
+                if "LOGIN_REQUIRED" in gates:
+                    print("      [login wall] detected; cancelling instead of waiting for timeout")
+                    await ws.send(json.dumps({
+                        "v": 1, "type": "TASK_CANCEL",
+                        "payload": {"task_id": task_id},
+                    }))
             elif t == "CONFIRMATION_REQUESTED":
                 m.policy_confirms += 1
                 m.human_interventions += 1
@@ -229,6 +243,14 @@ async def run_task(spec: Dict[str, Any]) -> Dict[str, Any]:
                     await ws.send(json.dumps({
                         "v": 1, "type": "CONFIRMATION_DENIED", "payload": payload,
                     }))
+                    if gate_under_test:
+                        # An operator who refuses a consequential action stops the
+                        # task; leaving the agent to retry the same button would
+                        # turn one honest "no" into a loop of policy denials.
+                        await ws.send(json.dumps({
+                            "v": 1, "type": "TASK_CANCEL",
+                            "payload": {"task_id": task_id},
+                        }))
             elif t == "TASK_COMPLETED":
                 outcome = "COMPLETED"
                 summary = p.get("summary", "")

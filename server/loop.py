@@ -1680,7 +1680,7 @@ def _distinctive_terms(text: str) -> List[str]:
     terms += re.findall(r'"([^"]{2,40})"', text)
     terms += re.findall(r"\b\d[\d,./:-]{2,}\b", text)
     terms += re.findall(r"\b[A-Z][A-Za-z0-9&._-]{2,}\b", text)
-    terms += [w for w in re.findall(r"\b[a-z][a-z0-9._-]{5,}\b", text.lower())
+    terms += [w for w in re.findall(r"\b[a-z][a-z0-9._-]{4,}\b", text.lower())
               if w not in _STOPWORDS]
     seen = set()
     out = []
