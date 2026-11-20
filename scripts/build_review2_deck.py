@@ -272,10 +272,17 @@ text(s, M, 5.25, 7.2, 0.7,
      "before serialisation, and asks a human before anything consequential.",
      size=13.5, color="C9C0AE", line_spacing=1.25)
 
-text(s, M, 6.3, 7.6, 0.5,
-     "Department of Space / ISRO  ·  Smart Automation · Software\n"
-     "Team: [add names]  ·  [add institution]",
-     size=9.5, color="8F887A", font=MONO, line_spacing=1.35)
+text(s, M, 6.14, 11.8, 0.24,
+     "Vasavi College of Engineering  ·  Department of Space / ISRO  ·  Smart Automation · Software",
+     size=9.0, color="A9A290", font=MONO)
+text(s, M, 6.39, 11.8, 0.24,
+     "Nulu Keshav Vardhan · 1602-24-737-146     "
+     "Uppala Mahesh · 1602-24-737-151     "
+     "Pandugolla Sai Jashwanth Reddy · 1602-24-737-164",
+     size=8.2, color="A9A290", font=MONO)
+text(s, M, 6.63, 11.8, 0.24,
+     "Reviewer: Divya Lingineni",
+     size=8.6, color="A9A290", font=MONO)
 
 # Aperture mark
 cx, cy = 10.55, 3.15

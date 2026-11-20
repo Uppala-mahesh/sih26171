@@ -616,7 +616,7 @@ No. It is a technical-controls report and hash-chained audit, not a legal certif
 ### Needs your confirmation before the review
 
 - [ ] **Official SIH problem statement wording/theme.** The repo says SIH 2026 PS 26171, Department of Space/ISRO, “On-device Visual Perception for Light-weight Browser Agents.” Confirm against the official SIH portal/PPT.
-- [ ] **Team/institution details** are not in the repository; replace `[add names]` and `[add institution]` on the deck title slide.
+- [x] **Title slide details** — Vasavi College of Engineering; team Nulu Keshav Vardhan (1602-24-737-146), Uppala Mahesh (1602-24-737-151), Pandugolla Sai Jashwanth Reddy (1602-24-737-164); reviewer Divya Lingineni; date 21-Nov-2026.
 - [ ] **MLA access dates and URLs** — verify each link and the exact publication date before submission.
 - [ ] **Reviewer rubric weights** mentioned in the PDF (e.g., 25% visual understanding, 20% resource use) — treat these as PDF claims unless the official rubric is in hand.
 - [ ] **Any claim of “zero leakage,” “fully local,” “real-time,” or “production-ready”** — do not use these; the evidence does not support them.
