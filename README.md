@@ -270,7 +270,7 @@ curl http://127.0.0.1:8787/tasks/<task_id>/audit   # the whole stream
 ```bash
 npm run gates      # G1-G14 anti-pretence gates (grep-enforced)
 npm test           # 146 JS tests (walker, redaction, keepalive, manifest)
-npm run test:py    # 243 Python tests (schema, policy, verifier, knowledge)
+npm run test:py    # 244 Python tests (schema, policy, verifier, knowledge)
 npm run smoke      # six-case end-to-end smoke suite against the real browser
 npm run demo       # 13-case capability demonstration suite
 ```
@@ -368,7 +368,7 @@ Full engineering documentation lives in [`docs/`](docs/README.md):
 | [UML diagrams](docs/05-uml/diagrams.md) | Use case, class, sequence, activity, component, state, deployment |
 | [Backlog & sprints](docs/03-agile/backlog.md) | 5 epics, 94 points delivered, DoD, impediments |
 | [Test strategy](docs/04-quality/test-strategy.md) | Gates, layers, coverage priorities, known gaps |
-| [Evidence](docs/06-evidence/verification.json) | Machine-produced verification numbers |
+| [Evidence](docs/06-evidence/verification.json) | Machine-produced numbers from the 11 Oct 2026 run; the counts above are newer |
 
 ## Verification status
 
@@ -376,7 +376,8 @@ Full engineering documentation lives in [`docs/`](docs/README.md):
 |---|---|
 | Anti-pretence gates | **14 / 14** |
 | JavaScript tests | **146 passed** |
-| Python tests | **243 passed** |
+| Python tests | **244 passed** |
+| Capability suite | **13 / 13** (20 Nov 2026) |
 | Production build | clean |
 | ESLint | clean |
 

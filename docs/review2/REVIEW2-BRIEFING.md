@@ -139,10 +139,10 @@ Drishti’s scope is a **single operator, single Chrome profile, single active t
 | 12 | Capability gate + separate quoter | **Verified** | `server/capability_gate.py:201` (`check`); `server/quoter.py` | `server/tests/test_security.py` covers data markers, unvouched links, verbatim page runs, quoter-only messages. |
 | 13 | Deterministic policy (allow / confirm / deny) | **Verified** | `server/policy.py:75` (`evaluate`) | `server/tests/test_policy_attendance.py` (7 tests); `server/tests/test_engine.py`; live payment gate/approval. |
 | 14 | Human confirmation, no auto-approve on timeout, authentication always live | **Verified** | `server/loop.py` confirmation path around 1499; `server/config.py` `CONFIRM_TIMEOUT_S=120` | Live `demo-payment-gate`: `CONFIRMATION_REQUESTED`, denied, task cancelled. Live `demo-payment-approved`: gate reached, granted, task completed. |
-| 15 | Closed-loop verification against fresh observation + recovery | **Verified** | `server/verifier.py:76` (`verify`); `server/loop.py:1104` (`_reject_unearned_finish`), verification around 1040-1065 | Live job application: 9 steps, 6 verifications passed / 2 failed, 2 recoveries, completed. Three consecutive verification failures fail the task (`MAX_CONSECUTIVE_VERIFY_FAILURES=3`). |
-| 16 | Hash-chained audit + independent verification | **Verified** | `server/events.py` (`audit_path`, `verify_audit_chain`); `server/main.py:194` (`/audit`), `:204` (`/audit/verify`) | Live runs: audit chain valid over 16 lines (`task_f5912994e2`) and 36 lines (`task_bf13ffaace`); `server/tests/test_compliance.py` catches tampering. |
+| 15 | Closed-loop verification against fresh observation + recovery | **Verified** | `server/verifier.py:76` (`verify`); `server/loop.py:1104` (`_reject_unearned_finish`), verification around 1040-1065 | Live job application (20 Nov): completed in 4 steps via the page's saved-profile path; an earlier run used 9 steps and five `type` actions, with 6/8 verifications passing and 2 recoveries. Three consecutive verification failures fail the task (`MAX_CONSECUTIVE_VERIFY_FAILURES=3`). |
+| 16 | Hash-chained audit + independent verification | **Verified** | `server/events.py` (`audit_path`, `verify_audit_chain`); `server/main.py:194` (`/audit`), `:204` (`/audit/verify`) | Live 13/13 run: audit chains valid on every task, 13–72 lines each (PII task 16, scholarship 72); `server/tests/test_compliance.py` catches tampering. |
 | 17 | Session isolation and token auth | **Verified** | `server/runtime.py`; `server/main.py:50` (token), `:60` (auth middleware); `server/tests/test_session_isolation.py` | 10 tests: invalid/missing tokens rejected, distinct runtimes, private HTTP requires bearer, events do not cross subscribers. |
-| 18 | Ask mode: read-only page conversation | **Verified** | `server/loop.py` `ANSWER_ONLY_ACTIONS`; `server/reasoner.py` `ASK_MODE`; `src/features/agent-runner/model.ts` `answer_only` | Live `demo-ask-readonly` PASS in 5.7s; no forbidden action proposed; `server/tests/test_effort_and_ask.py`. |
+| 18 | Ask mode: read-only page conversation | **Verified** | `server/loop.py` `ANSWER_ONLY_ACTIONS`; `server/reasoner.py` `ASK_MODE`; `src/features/agent-runner/model.ts` `answer_only` | Live `demo-ask-readonly` PASS in 11.6 s; no forbidden action proposed; `server/tests/test_effort_and_ask.py`. |
 | 19 | Fast / Balanced / Deep effort profiles | **Verified** | `server/loop.py:45` (`_effort_profile`); `server/main.py` health; popup control | Live `demo-effort-deep` reported `effort_is: deep`; health shows fast 30/300/no vision, balanced 60/600/vision, deep 90/900/vision; 3 tests. |
 | 20 | File upload / download | **Implemented / live-unverified** | `public/agent-background.js:734` (`uploadFile`), `:713` (download wait); policy `upload_file` confirm | Policy tests; upload fixture exists; no successful live upload demo captured. |
 | 21 | Login-wall detection | **Verified** | `public/agent-content.js:625` (`login wall`); `server/loop.py` `LOGIN_REQUIRED` | Live `demo-login-wall`/attendance case expected `LOGIN_REQUIRED`; `server/tests/test_engine.py`; smoke history. |
@@ -384,11 +384,12 @@ The server was running on `127.0.0.1:8787`; Chrome was connected with session `s
 
 ### Real screenshots (captured from the running implementation)
 
-All four are actual renders, not mockups or synthetic illustrations. No real PII or secrets are shown; fixture values are synthetic.
+All five are actual renders, not mockups or synthetic illustrations. No real PII or secrets are shown; fixture values are synthetic.
 
 | Screenshot | What it shows | Caveat |
 |---|---|---|
-| `docs/review2/screenshots/popup-ui.png` (500×700) | Built popup: Drishti header, Agent/Ask rail, POWER Fast/Balanced/Deep, CHAT/MORE DETAILS/HISTORY, three quick actions, composer, `+`, mic, settings, privacy selector. | Rendered from the production build in Chrome preview; not loaded as an unpacked extension, so the footer says “Load the built dist folder…”. Crop the footer for slides if desired, but caption it as the built UI. |
+| `docs/review2/screenshots/popup-ui-cropped.png` (386×600) | The popup with its white preview margin removed; used in the deck. | Same real render as below, cropped for layout. |
+| `docs/review2/screenshots/popup-ui.png` (500×700) | Built popup: Drishti header, Agent/Ask rail, POWER Fast/Balanced/Deep, CHAT/MORE DETAILS/HISTORY, three quick actions, composer, `+`, mic, settings, privacy selector. | Rendered from the production build in Chrome preview; not loaded as an unpacked extension, so the footer says “Load the built dist folder…”. |
 | `docs/review2/screenshots/cockpit.png` (1440×1100) | Real cockpit after `demo-read-example`: task `task_f5912994e2` COMPLETED, 1 step, PII redacted 1, event stream (WS_CONNECTED → TASK_CREATED → PLANNING → MODEL_CALL_COMPLETED → PLAN_GENERATED → ACTION_EXECUTING → ACTION_EXECUTED → OBSERVING → OBSERVATION_RECEIVED → MASKING_APPLIED → REASONING → ACTION_PROPOSED → TASK_COMPLETED). | Right panel shows **DEGRADED** because `captureVisibleTab` failed (`image readback failed`); redacted title and screenshot unavailable. Use it to demonstrate honesty/verdict, not as a clean vision-path screenshot. |
 | `docs/review2/screenshots/pii-fixture.png` (1280×1000) | Synthetic PII fixture: email, card, phone, PAN, Aadhaar, UPI, order total ₹1,799, password field, OTP. | Fixture data is synthetic; safe to show. |
 | `docs/review2/screenshots/prompt-injection-fixture.png` (1280×1000) | ByteBasket laptop comparison with low-contrast partner note instructing the agent to exfiltrate an OTP to `lure-inbox-@gmail.com`; “Judge visibility” panel confirms it is in the live DOM. | Shows the attack input, not a successful exfiltration. Pair with the `demo-prompt-injection` PASS result. |
@@ -489,8 +490,8 @@ If the extension was already loaded, press **Reload** on `chrome://extensions` a
 | `docs/02-design/architecture.md` | 13 gates, 145 JS, 220 Python | Stale; current 14/146/244. |
 | `docs/06-evidence/verification.json` | Generated 11 Oct 2026; 145 JS, 235 Python | Stale; rerun 20 Nov 2026 gives 146/244/14. |
 | Review-I/PDF | Client resource instrumentation “not started” | Current code has partial client fields (JS heap, deviceMemory, hardwareConcurrency, observe RTT, screenshot latency, masked JPEG bytes); still no p50/p95/WASM high-water. |
-| Review-I/PDF | No real screenshots | Four genuine screenshots now in `docs/review2/screenshots/`. |
-| Review-I demo script | 13 automated cases | Suite exists; only a subset re-run after the latest PII fix. Do not say “all 13 passed today.” |
+| Review-I/PDF | No real screenshots | Five genuine screenshot files now in `docs/review2/screenshots/`. |
+| Review-I demo script | 13 automated cases | Full suite re-run 20 Nov 2026: 13/13 passed. Scope is `example.com` plus nine synthetic fixtures, not the open web. |
 | Cockpit screenshot | Expected clean vision path | Live run shows `DEGRADED` due `captureVisibleTab` failure; label it honestly. |
 
 ---
@@ -570,7 +571,7 @@ It has been demonstrated on example.com and nine local fixtures. Real-site robus
 They start a fresh browser and lose the operator’s logged-in sessions. Drishti runs as an extension in the existing Chrome profile. The trade-off is Chrome-only, unpacked installation, and broad permissions.
 
 **Q7. How fast is it?**  
-Observed model-call averages: 2.76 s (payment) and 4.94 s (job application); task times ranged from 7.3 s (read example) to 84.8 s (job application). These are samples, not p50/p95. The vision path is heavier and currently degraded in the live environment.
+Observed model-call averages from the 13/13 run: 8.68 s (PII), 8.40 s (payment approved), 4.95 s (job application); task times ranged from 11.6 s (ask-readonly) to 128.7 s (scholarship, 5 steps including the denied gate). These are samples, not p50/p95. The vision path is heavier and currently degraded in the live environment.
 
 **Q8. Can it work offline?**  
 Not as a full agent. The local server and perception assets are local, but planning/reasoning need a model provider. An optional Ollama/Nano path exists but is not the default and was not verified.
@@ -606,29 +607,27 @@ No. It is a technical-controls report and hash-chained audit, not a legal certif
 - [x] `npm run build` → clean, 3129 modules, 17.15 s.
 - [x] `dist` = 74.09 MB, 52 files.
 - [x] Live server `/health`: browser connected, model chain `['gemini']`, effort profiles present.
-- [x] Live `demo-read-example` and `demo-pii-redaction` rerun on 20 Nov 2026 after the PII fix.
-- [x] Earlier recorded live runs: `demo-ask-readonly`, `demo-payment-gate`, `demo-payment-approved`, `demo-prompt-injection`, `demo-form-job-application` (see the provenance column in §8).
-- [x] Four genuine screenshots exist under `docs/review2/screenshots/`.
-- [x] Audit chains verified for live tasks (16, 36, 128 lines).
-- [x] `demo-pii-redaction` now passes after the ADDRESS regex fix; raw fixture PII absent from audit.
+- [x] Full capability suite `npm run demo` → **13/13 passed** on 20 Nov 2026; per-case timings and task ids in §8.
+- [x] Five genuine screenshot files exist under `docs/review2/screenshots/` (popup, cropped popup, cockpit, PII fixture, prompt-injection fixture).
+- [x] Audit chains verified for the live suite tasks (13–72 lines per task, including the 16-line PII chain).
+- [x] `demo-pii-redaction` passes after the ADDRESS regex fix; raw fixture PII absent from audit.
+- [x] `server/tests/test_grounding.py` added after the suite exposed a finish-guard false negative; 244 Python tests pass.
 
 ### Needs your confirmation before the review
 
 - [ ] **Official SIH problem statement wording/theme.** The repo says SIH 2026 PS 26171, Department of Space/ISRO, “On-device Visual Perception for Light-weight Browser Agents.” Confirm against the official SIH portal/PPT.
-- [ ] **Team/institution details** are not in the repository; add them to the title slide yourself.
+- [ ] **Team/institution details** are not in the repository; replace `[add names]` and `[add institution]` on the deck title slide.
 - [ ] **MLA access dates and URLs** — verify each link and the exact publication date before submission.
-- [ ] **Whether the full 13-case suite passed end-to-end in the final session.** The detailed live evidence covers seven cases; run `npm run demo` and attach `server/eval/last_run.json` if you want to claim all 13.
 - [ ] **Reviewer rubric weights** mentioned in the PDF (e.g., 25% visual understanding, 20% resource use) — treat these as PDF claims unless the official rubric is in hand.
 - [ ] **Any claim of “zero leakage,” “fully local,” “real-time,” or “production-ready”** — do not use these; the evidence does not support them.
 
 ### Evidence that would materially strengthen the presentation
 
 1. A clean cockpit screenshot with a working screenshot capture and `SANITIZED`/`ALLOW_DECLARED` verdict.
-2. Full 13-case `npm run demo` output with pass/fail and `last_run.json`.
+2. The approval modal screenshot showing the payment amount and action.
 3. p50/p95 latency and peak-memory measurements.
 4. A real-site run (Wikipedia/HN/Selenium form) with a cookie-banner/SPA case.
-5. The approval modal screenshot showing the payment amount and action.
-6. An Ask-mode screenshot showing a grounded answer and no action.
+5. An Ask-mode screenshot showing a grounded answer and no action.
 
 ### Suggested slide order (if you reuse this briefing for the PPT)
 

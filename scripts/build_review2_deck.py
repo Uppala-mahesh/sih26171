@@ -719,7 +719,7 @@ text(s, M, 5.25, 4.7, 0.5,
 ev = [
     ("6 + 2", "Six PII shapes redacted; password and OTP protected. Eight mask boxes recorded."),
     ("₹1,799", "The answer survived redaction. A regex that crossed newlines was found live and fixed."),
-    ("0", "Raw fixture values in the audit file. [REDACTED: present; 36-line chain verified."),
+    ("0", "Raw fixture values in the audit file. [REDACTED: present; 16-line chain verified."),
     ("DEGRADED", "The cockpit states a failed capture instead of showing a clean screenshot."),
 ]
 for i, (num, body) in enumerate(ev):
@@ -731,7 +731,7 @@ for i, (num, body) in enumerate(ev):
     rule(s, 5.75, y + 0.98, 6.75, "C9BFA7", 0.6)
 
 text(s, 5.75, 6.42, 6.8, 0.4,
-     "demo-pii-redaction  ·  11.6 s  ·  1 step  ·  COMPLETED  ·  audit chain valid",
+     "demo-pii-redaction  ·  20.4 s  ·  1 step  ·  COMPLETED  ·  audit chain valid",
      size=8.0, color=OK, font=MONO, bold=True)
 notes(s, "This is the privacy case, and it is honest about both sides. Six patterns "
          "were redacted, password and OTP were protected, the order total survived, "

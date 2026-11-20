@@ -150,7 +150,7 @@ python -m pip install -r server/requirements.txt
 npm run build
 npm run gates      # 14/14
 npm test           # 146
-npm run test:py    # 243
+npm run test:py    # 244
 npm run server     # then open http://127.0.0.1:8787/cockpit
 ```
 

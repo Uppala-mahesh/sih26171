@@ -54,7 +54,7 @@ Put a model key in `.env` (`GEMINI_API_KEY`, `GROQ_API_KEY` or
 ```bash
 npm run gates      # 14/14 anti-pretence gates
 npm test           # 146 JavaScript tests
-npm run test:py    # 243 Python tests
+npm run test:py    # 244 Python tests
 npm run build      # clean
 ```
 
